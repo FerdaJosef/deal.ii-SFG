@@ -44,7 +44,38 @@
 
 using namespace dealii;
 
+class BoundaryValues : public Function<3>
+{
+public:
+  virtual double value(const Point<3>  &p,
+                       const unsigned int component = 0) const override;
+};
 
+double BoundaryValues::value(const Point<3> &p,
+                                  const unsigned int /*component*/) const
+{
+  const double tol = 1e-10; // tolerance
+
+  if (std::fabs(p[0] + 1.0) < tol)
+    return 0.0;
+
+  if (std::fabs(p[0] - 1.0) < tol)
+    return 1.0;
+
+  if (std::fabs(p[1] + 1.0) < tol)
+    return 0.0;
+
+  if (std::fabs(p[1] - 1.0) < tol)
+    return 1.0;
+
+  if (std::fabs(p[2] + 1.0) < tol)
+    return 0.0;
+
+  if (std::fabs(p[2] - 1.0) < tol)
+    return 1.0;
+
+  return 0.0;
+}
 
 class Step3
 {
@@ -85,7 +116,7 @@ Step3::Step3()
 void Step3::make_grid()
 {
   GridGenerator::hyper_cube(triangulation, -1, 1);
-  triangulation.refine_global(8);
+  triangulation.refine_global(4);
 
   std::cout << "Number of active cells: " << triangulation.n_active_cells()
             << std::endl;
@@ -221,7 +252,7 @@ void Step3::assemble_system()
   std::map<types::global_dof_index, double> boundary_values;
   VectorTools::interpolate_boundary_values(dof_handler,
                                            types::boundary_id(0),
-                                           Functions::ZeroFunction<3>(),
+                                           BoundaryValues(),
                                            boundary_values);
   MatrixTools::apply_boundary_values(boundary_values,
                                      system_matrix,
