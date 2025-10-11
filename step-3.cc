@@ -41,6 +41,7 @@
 #include <fstream>
 #include <iostream>
 #include "laplace.h"
+#include <filesystem>
 
 using namespace dealii;
 
@@ -55,7 +56,7 @@ double BoundaryValues::value(const Point<3> &p,
                                   const unsigned int /*component*/) const
 {
   const double tol = 1e-10; // tolerance
-
+  
   if (std::fabs(p[0] + 1.0) < tol)
     return 0.0;
 
@@ -103,6 +104,10 @@ private:
   Vector<double> newton_iterate;
   Vector<double> solution;
   Vector<double> system_rhs;
+
+  double       time;
+  double       time_step;
+  unsigned int timestep_number;
 };
 
 
@@ -179,9 +184,6 @@ void Step3::assemble_system()
   std::vector<Tensor<2, dim>> dPsiDgradu2(quadrature_formula.size());
   //======= ACEGEN=======
 
-  double delta_t=0.01;
-
-
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
       fe_values.reinit(cell);
@@ -205,7 +207,7 @@ void Step3::assemble_system()
             &dPsiDU2[q_index],
             dPsiDgradu2[q_index],
             dPsiDUdgradu[q_index],
-            &delta_t
+            &time_step, &time
           );
 
           for (const unsigned int i : fe_values.dof_indices())
@@ -280,15 +282,15 @@ void Step3::output_results() const
   data_out.attach_dof_handler(dof_handler);
   data_out.add_data_vector(solution, "solution");
   data_out.build_patches();
-
-  const std::string filename = "solution.vtk";
-  std::ofstream     output(filename);
+ 
+  const std::string filename = "output/solution-" + Utilities::int_to_string(timestep_number) + ".vtk";
+  std::ofstream output(filename);
   data_out.write_vtk(output);
   std::cout << "Output written to " << filename << std::endl;
 }
 
 
-
+/*
 void Step3::run()
 {
   make_grid();
@@ -297,7 +299,49 @@ void Step3::run()
   solve();
   output_results();
 }
+*/
 
+void Step3::run()
+{
+  std::filesystem::create_directory("output");
+
+  time = 0.0;
+  time_step = 0.1;
+  timestep_number = 0;
+  const double final_time = 10.0; // for example
+
+  make_grid();
+  setup_system();
+
+  oldsolution = 0;
+  solution = 0;
+
+  while (time <= final_time)
+  {
+      time += time_step;
+      ++timestep_number;
+      std::cout << "Time step " << timestep_number << " at t=" << time << std::endl;
+
+      assemble_system();
+      solve();
+      output_results();
+
+      oldsolution = solution;
+  }
+  std::ofstream pvd("output/solution_series.pvd");
+  pvd << "<?xml version=\"1.0\"?>\n"
+      << "<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
+      << "  <Collection>\n";
+
+  for (unsigned int step = 1; step <= timestep_number; ++step)
+    pvd << "    <DataSet timestep=\"" << step * time_step
+        << "\" group=\"\" part=\"0\" file=\"solution-"
+        << step << ".vtk\"/>\n";
+
+  pvd << "  </Collection>\n"
+      << "</VTKFile>\n";
+
+}
 
 
 int main()
