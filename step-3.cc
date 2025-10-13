@@ -127,15 +127,13 @@ void Step3::make_grid()
             << std::endl;
 }
 
-
-
-
 void Step3::setup_system()
 {
   dof_handler.distribute_dofs(fe);
   std::cout << "Number of degrees of freedom: " << dof_handler.n_dofs()
             << std::endl;
 
+  
   DynamicSparsityPattern dsp(dof_handler.n_dofs());
   DoFTools::make_sparsity_pattern(dof_handler, dsp);
   sparsity_pattern.copy_from(dsp);
@@ -278,15 +276,23 @@ void Step3::solve()
 
 void Step3::output_results() const
 {
+  static std::vector<std::pair<double, std::string>> times_and_names;
+
   DataOut<3> data_out;
   data_out.attach_dof_handler(dof_handler);
   data_out.add_data_vector(solution, "solution");
   data_out.build_patches();
- 
-  const std::string filename = "output/solution-" + Utilities::int_to_string(timestep_number) + ".vtk";
+
+  const std::string filename = "output/solution-" + Utilities::int_to_string(timestep_number) + ".vtu";
   std::ofstream output(filename);
-  data_out.write_vtk(output);
+  data_out.write(output, DataOutBase::vtu);
+
   std::cout << "Output written to " << filename << std::endl;
+  times_and_names.push_back(
+                {time, filename});
+
+  std::ofstream pvd_output ("solution.pvd");
+  DataOutBase::write_pvd_record (pvd_output, times_and_names);
 }
 
 
@@ -306,9 +312,9 @@ void Step3::run()
   std::filesystem::create_directory("output");
 
   time = 0.0;
-  time_step = 0.1;
+  time_step = 0.01;
   timestep_number = 0;
-  const double final_time = 10.0; // for example
+  const double final_time = 0.1; // for example
 
   make_grid();
   setup_system();
@@ -328,19 +334,6 @@ void Step3::run()
 
       oldsolution = solution;
   }
-  std::ofstream pvd("output/solution_series.pvd");
-  pvd << "<?xml version=\"1.0\"?>\n"
-      << "<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
-      << "  <Collection>\n";
-
-  for (unsigned int step = 1; step <= timestep_number; ++step)
-    pvd << "    <DataSet timestep=\"" << step * time_step
-        << "\" group=\"\" part=\"0\" file=\"solution-"
-        << step << ".vtk\"/>\n";
-
-  pvd << "  </Collection>\n"
-      << "</VTKFile>\n";
-
 }
 
 
