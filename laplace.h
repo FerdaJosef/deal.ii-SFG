@@ -14,11 +14,11 @@ Total size of C code            : 721 bytes */
 unsigned int dim=3;
 void laplace(std::vector<double> &v,double (*Uin),double (*Uold)
      ,dealii::Tensor<1, 3> &GradU,double (*dPsiDu),dealii::Tensor<1,3> &dPsidGradU,double (*dPsiDu2)
-     ,dealii::Tensor<2,3> &dPsidGradU2,dealii::Tensor<1,3>& dPsidUdGradU,double (*deltat), double (*t))
+     ,dealii::Tensor<2,3> &dPsidGradU2,dealii::Tensor<1,3>& dPsidUdGradU,double (*deltat), double (*time))
 {
 int i01;
 v[6]=(*deltat);
-(*dPsiDu)=((*Uin)-(*Uold))/v[6]-1.0;
+(*dPsiDu)=((*Uin)-(*Uold)-1.0)/v[6];
 dPsidGradU[0]=0.1e0*GradU[0];
 dPsidGradU[1]=0.1e0*GradU[1];
 dPsidGradU[2]=0.1e0*GradU[2];

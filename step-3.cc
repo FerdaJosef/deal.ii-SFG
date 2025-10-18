@@ -45,39 +45,6 @@
 
 using namespace dealii;
 
-class BoundaryValues : public Function<3>
-{
-public:
-  virtual double value(const Point<3>  &p,
-                       const unsigned int component = 0) const override;
-};
-
-double BoundaryValues::value(const Point<3> &p,
-                                  const unsigned int /*component*/) const
-{
-  const double tol = 1e-10; // tolerance
-  
-  if (std::fabs(p[0] + 1.0) < tol)
-    return 0.0;
-
-  if (std::fabs(p[0] - 1.0) < tol)
-    return 1.0;
-
-  if (std::fabs(p[1] + 1.0) < tol)
-    return 0.0;
-
-  if (std::fabs(p[1] - 1.0) < tol)
-    return 1.0;
-
-  if (std::fabs(p[2] + 1.0) < tol)
-    return 0.0;
-
-  if (std::fabs(p[2] - 1.0) < tol)
-    return 1.0;
-
-  return 0.0;
-}
-
 class Step3
 {
 public:
@@ -108,8 +75,46 @@ private:
   double       time;
   double       time_step;
   unsigned int timestep_number;
+
+  unsigned int iterations;
 };
 
+class BoundaryValues : public Function<3>
+{
+public:
+  virtual double value(const Point<3>  &p,
+                       const unsigned int component = 0) const override;
+  BoundaryValues() : Function<3>() {}
+};
+
+double BoundaryValues::value(const Point<3> &p,
+                                  const unsigned int /*component*/) const
+{
+  const double t = this->get_time();
+
+  const double tol = 1e-10; // tolerance
+  /*
+  if (std::fabs(p[0] + 1.0) < tol)
+    return 0.0;
+
+  if (std::fabs(p[0] - 1.0) < tol)
+    return 1.0;
+
+  if (std::fabs(p[1] + 1.0) < tol)
+    return 0.0;
+
+  if (std::fabs(p[1] - 1.0) < tol)
+    return 1.0;
+
+  if (std::fabs(p[2] + 1.0) < tol)
+    return 0.0;
+
+  if (std::fabs(p[2] - 1.0) < tol)
+    return 1.0;
+  */
+
+  return std::cos(5.0*M_PI*p[0])*std::exp(-2500.0*(t - 0.05)*(t - 0.05));
+}
 
 Step3::Step3()
   : fe(/* polynomial degree = */ 1)
@@ -229,6 +234,7 @@ void Step3::assemble_system()
                 ) *
                  fe_values.JxW(q_index);           // dx
 
+          // Toto je rovnice pro konečné prvky        
           for (const unsigned int i : fe_values.dof_indices())
             cell_rhs(i) += (fe_values.shape_value(i, q_index) * 
                             dPsiDU[q_index]
@@ -250,9 +256,12 @@ void Step3::assemble_system()
 
 
   std::map<types::global_dof_index, double> boundary_values;
+
+  BoundaryValues BV;
+  BV.set_time(time);
   VectorTools::interpolate_boundary_values(dof_handler,
                                            types::boundary_id(0),
-                                           BoundaryValues(),
+                                           BV,
                                            boundary_values);
   MatrixTools::apply_boundary_values(boundary_values,
                                      system_matrix,
@@ -264,12 +273,13 @@ void Step3::assemble_system()
 
 void Step3::solve()
 {
-  SolverControl            solver_control(1000, 1e-6 * system_rhs.l2_norm());
+  SolverControl            solver_control(1000, 1e-06*system_rhs.l2_norm());
   SolverCG<Vector<double>> solver(solver_control);
   solver.solve(system_matrix, solution, system_rhs, PreconditionIdentity());
 
-  std::cout << solver_control.last_step()
-            << " CG iterations needed to obtain convergence." << std::endl;
+  iterations = solver_control.last_step();
+  std::cout << iterations
+            << " CG iterations needed to obtain convergence." << " " << system_rhs.l2_norm() << std::endl;
 }
 
 
@@ -312,17 +322,22 @@ void Step3::run()
   std::filesystem::create_directory("output");
 
   time = 0.0;
-  time_step = 0.01;
+  time_step = 0.001;
   timestep_number = 0;
   const double final_time = 0.1; // for example
 
   make_grid();
   setup_system();
 
-  oldsolution = 0;
-  solution = 0;
+  oldsolution = 0.0;
+  solution = 0.0;
 
-  while (time <= final_time)
+  double max_multiplier = 1.6;
+  double min_multiplier = 0.5;
+  double optimal_it = 30;
+  double dt_max = final_time / 10;
+  
+  while (time < final_time)
   {
       time += time_step;
       ++timestep_number;
@@ -330,6 +345,24 @@ void Step3::run()
 
       assemble_system();
       solve();
+
+      if (iterations <= optimal_it) {
+        // self.dt.assign(min(dt_max, float(self.dt) * min(1.6, optimal_it / (iterations + 0.001))));
+        time_step = std::min(dt_max, time_step*std::min(max_multiplier, optimal_it/(iterations + 0.001)));
+      }
+      else {
+        // self.dt.assign(float(self.dt) * max(0.5, optimal_it / iterations));
+        time_step = time_step*std::max(min_multiplier, optimal_it / iterations);
+      }
+
+      if (time + time_step > final_time) {
+        time_step = final_time - time;
+      }
+      
+      if (time_step < 1e-6) {
+        break;
+      }
+
       output_results();
 
       oldsolution = solution;
