@@ -56,9 +56,35 @@ public:
 private:
   void make_grid();
   void setup_system();
+
+  struct AssemblyScratchData
+    {
+      AssemblyScratchData(const FiniteElement<3> &fe);
+      AssemblyScratchData(const AssemblyScratchData &scratch_data);
+ 
+      FEValues<3>     fe_values;
+ 
+      std::vector<double> rhs_values;
+      RightHandSide<3>  right_hand_side;
+      BoundaryValues<3> boundary_values;
+    };
+ 
+  struct AssemblyCopyData
+  {
+    FullMatrix<double>                   cell_matrix;
+    Vector<double>                       cell_rhs;
+    std::vector<types::global_dof_index> local_dof_indices;
+  };
+
   void assemble_system();
+  void local_assemble_system(
+      const typename DoFHandler<3>::active_cell_iterator &cell,
+      AssemblyScratchData                                  &scratch,
+      AssemblyCopyData                                     &copy_data);
+  void copy_local_to_global(const AssemblyCopyData &copy_data);
+
   void solve();
-  void output_results() const;
+  void output_results(/*const unsigned int cycle*/) const;
 
   Triangulation<3> triangulation;
   const FE_Q<3>    fe;
@@ -151,22 +177,45 @@ void Step3::setup_system()
   newton_iterate.reinit(dof_handler.n_dofs());
 }
 
-
-
 void Step3::assemble_system()
 {
-  const QGauss<3> quadrature_formula(fe.degree + 1);
-  FEValues<3> fe_values(fe,
-                        quadrature_formula,
-                        update_values | update_gradients | update_JxW_values);
+  WorkStream::run(dof_handler.begin_active(),
+                  dof_handler.end(),
+                  *this,
+                  &Step3::local_assemble_system,
+                  &Step3::copy_local_to_global,
+                  AssemblyScratchData(fe),
+                  AssemblyCopyData());
+}
 
+Step3::AssemblyScratchData::AssemblyScratchData(
+    const FiniteElement<3> &fe)
+    : fe_values(fe,
+                QGauss<3>(fe.degree + 1),
+                update_values | update_gradients | update_quadrature_points |
+                  update_JxW_values)
+  {}
+
+Step3::AssemblyScratchData::AssemblyScratchData(
+    const AssemblyScratchData &scratch_data)
+    : fe_values(scratch_data.fe_values.get_fe(),
+                scratch_data.fe_values.get_quadrature(),
+                update_values | update_gradients | update_quadrature_points |
+                update_JxW_values)
+  {}
+
+void Step3::assemble_local_system(
+    const typename DoFHandler<dim>::active_cell_iterator &cell,
+    AssemblyScratchData                                  &scratch_data,
+    AssemblyCopyData                                     &copy_data)
+{
   const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
 
   FullMatrix<double> cell_matrix(dofs_per_cell, dofs_per_cell);
   Vector<double>     cell_rhs(dofs_per_cell);
 
   std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
-
+  // I left off here!!!!!!!
 
  const unsigned int dim=3;
   //======= ACEGEN input
