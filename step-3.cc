@@ -65,7 +65,6 @@ private:
       FEValues<3>     fe_values;
  
       std::vector<double> rhs_values;
-      RightHandSide<3>  right_hand_side;
       BoundaryValues<3> boundary_values;
     };
  
@@ -211,11 +210,21 @@ void Step3::assemble_local_system(
 {
   const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
 
-  FullMatrix<double> cell_matrix(dofs_per_cell, dofs_per_cell);
-  Vector<double>     cell_rhs(dofs_per_cell);
+  // I dont think we need this! We already have it in AssemblyCopyData
 
-  std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+  //FullMatrix<double> cell_matrix(dofs_per_cell, dofs_per_cell);
+  //Vector<double>     cell_rhs(dofs_per_cell);
+
+  // But we do have to reinit after every step, right?
+
+  //std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
   // I left off here!!!!!!!
+
+  copy_data.cell_matrix.reinit(dofs_per_cell, dofs_per_cell);
+  copy_data.cell_rhs.reinit(dofs_per_cell);
+  copy_data.local_dof_indices.resize(dofs_per_cell);
+  scratch_data.fe_values.reinit(cell);
+
 
  const unsigned int dim=3;
   //======= ACEGEN input
@@ -264,7 +273,7 @@ void Step3::assemble_local_system(
 
           for (const unsigned int i : fe_values.dof_indices())
             for (const unsigned int j : fe_values.dof_indices())
-              cell_matrix(i, j) +=
+              copy_data.cell_matrix(i, j) +=
                 (fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
                     dPsiDgradu2[q_index] *           // dPsi/d(grad u)
                  fe_values.shape_grad(j, q_index)     // grad phi_j(x_q)
@@ -285,19 +294,19 @@ void Step3::assemble_local_system(
 
           // Toto je rovnice pro konečné prvky        
           for (const unsigned int i : fe_values.dof_indices())
-            cell_rhs(i) += (fe_values.shape_value(i, q_index) * 
+            copy_data.cell_rhs(i) += (fe_values.shape_value(i, q_index) * 
                             dPsiDU[q_index]
                         + fe_values.shape_grad(i, q_index) * dPsiDgradU[q_index]
                         ) *
                             fe_values.JxW(q_index);
         }
-      cell->get_dof_indices(local_dof_indices);
+      cell->get_dof_indices(copy_data.local_dof_indices);
 
       for (const unsigned int i : fe_values.dof_indices())
         for (const unsigned int j : fe_values.dof_indices())
-          system_matrix.add(local_dof_indices[i],
-                            local_dof_indices[j],
-                            cell_matrix(i, j));
+          system_matrix.add(copy_data.local_dof_indices[i],
+                            copy_data.local_dof_indices[j],
+                            copy_data.cell_matrix(i, j));
 
       for (const unsigned int i : fe_values.dof_indices())
         system_rhs(local_dof_indices[i]) += cell_rhs(i);
