@@ -40,7 +40,7 @@
 #include <deal.II/numerics/data_out.h>
 #include <fstream>
 #include <iostream>
-#include "laplace.h"
+#include "nonlinear.h"
 
 #include <deal.II/base/conditional_ostream.h>
 #include <deal.II/lac/affine_constraints.h>
@@ -57,6 +57,46 @@
 #include <deal.II/numerics/error_estimator.h>
 
 using namespace dealii;
+
+class RightHandSide : public Function<3>
+{
+public:
+  RightHandSide()
+    : Function()
+    , period(0.2)
+  {}
+
+  virtual double value(const Point<3>  &p,
+                       const unsigned int component = 0) const override;
+  
+  private:
+    const double period;
+};
+ 
+
+class BoundaryValues : public Function<3>
+{
+public:
+  virtual double value(const Point<3>  &p,
+                       const unsigned int component = 0) const override;
+};
+ 
+
+double RightHandSide::value(const Point<3> &p,
+                                 const unsigned int /*component*/) const
+{
+  const double time = this->get_time();
+
+  //return 10*std::cos(M_PI*p[0])*std::cos(M_PI*p[1]);
+  return 2*p[0] - 5*p[1] + 11*p[2];
+}
+ 
+
+double BoundaryValues::value(const Point<3> &p,
+                                  const unsigned int /*component*/) const
+{
+  return 0.0;
+} 
 
 class Step3
 {
@@ -148,9 +188,11 @@ void Step3::assemble_system()
   const QGauss<3> quadrature_formula(fe.degree + 1);
   FEValues<3> fe_values(fe,
                         quadrature_formula,
-                        update_values | update_gradients | update_JxW_values);
+                        update_values | update_gradients | update_quadrature_points | update_JxW_values);
 
   const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
+
+  RightHandSide rhs_function;
 
   FullMatrix<double> cell_matrix(dofs_per_cell, dofs_per_cell);
   Vector<double>     cell_rhs(dofs_per_cell);
@@ -194,7 +236,7 @@ void Step3::assemble_system()
 
       for (const unsigned int q_index : fe_values.quadrature_point_indices())
         {
-        laplace(acegen_scratch,
+        laplace_nonlinear(acegen_scratch,
                 &(values_newton[q_index]),
             &(values_old[q_index]),
             gradients_newton[q_index],
@@ -227,9 +269,10 @@ void Step3::assemble_system()
                 ) *
                  fe_values.JxW(q_index);           // dx
 
+          const auto &x_q = fe_values.quadrature_point(q_index);
           for (const unsigned int i : fe_values.dof_indices())
             cell_rhs(i) += (fe_values.shape_value(i, q_index) * 
-                            dPsiDU[q_index]
+                            rhs_function.value(x_q)
                         + fe_values.shape_grad(i, q_index) * dPsiDgradU[q_index]
                         ) *
                             fe_values.JxW(q_index);
