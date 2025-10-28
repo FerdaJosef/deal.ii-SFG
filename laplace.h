@@ -18,7 +18,7 @@ void laplace(std::vector<double> &v,double (*Uin),double (*Uold)
 {
 int i01;
 v[6]=(*deltat);
-(*dPsiDu)=((*Uin)-(*Uold))/v[6];
+(*dPsiDu)=((*Uin)-(*Uold)-1.0)/v[6];
 dPsidGradU[0]=0.1e0*GradU[0];
 dPsidGradU[1]=0.1e0*GradU[1];
 dPsidGradU[2]=0.1e0*GradU[2];

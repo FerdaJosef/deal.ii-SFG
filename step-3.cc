@@ -42,40 +42,21 @@
 #include <iostream>
 #include "laplace.h"
 
+#include <deal.II/base/conditional_ostream.h>
+#include <deal.II/lac/affine_constraints.h>
+
+#include <deal.II/grid/grid_tools.h>
+ 
+#include <deal.II/dofs/dof_renumbering.h>
+ 
+#include <deal.II/fe/fe_system.h>
+#include <deal.II/fe/mapping_q.h>
+ 
+#include <deal.II/numerics/vector_tools.h>
+#include <deal.II/numerics/data_out.h>
+#include <deal.II/numerics/error_estimator.h>
+
 using namespace dealii;
-
-class BoundaryValues : public Function<3>
-{
-public:
-  virtual double value(const Point<3>  &p,
-                       const unsigned int component = 0) const override;
-};
-
-double BoundaryValues::value(const Point<3> &p,
-                                  const unsigned int /*component*/) const
-{
-  const double tol = 1e-10; // tolerance
-
-  if (std::fabs(p[0] + 1.0) < tol)
-    return 0.0;
-
-  if (std::fabs(p[0] - 1.0) < tol)
-    return 1.0;
-
-  if (std::fabs(p[1] + 1.0) < tol)
-    return 0.0;
-
-  if (std::fabs(p[1] - 1.0) < tol)
-    return 1.0;
-
-  if (std::fabs(p[2] + 1.0) < tol)
-    return 0.0;
-
-  if (std::fabs(p[2] - 1.0) < tol)
-    return 1.0;
-
-  return 0.0;
-}
 
 class Step3
 {
@@ -96,6 +77,8 @@ private:
   const FE_Q<3>    fe;
   DoFHandler<3>    dof_handler;
 
+  AffineConstraints<double> constraints;
+
   SparsityPattern      sparsity_pattern;
   SparseMatrix<double> system_matrix;
 
@@ -103,6 +86,11 @@ private:
   Vector<double> newton_iterate;
   Vector<double> solution;
   Vector<double> system_rhs;
+
+  double time;
+  double final_time;
+  double delta_t;
+  unsigned int timestep_number;
 };
 
 
@@ -111,11 +99,10 @@ Step3::Step3()
   , dof_handler(triangulation)
 {}
 
-
-
 void Step3::make_grid()
 {
-  GridGenerator::hyper_cube(triangulation, -1, 1);
+  GridGenerator::hyper_cube(triangulation, -1, 1, true);
+ 
   triangulation.refine_global(4);
 
   std::cout << "Number of active cells: " << triangulation.n_active_cells()
@@ -131,8 +118,19 @@ void Step3::setup_system()
   std::cout << "Number of degrees of freedom: " << dof_handler.n_dofs()
             << std::endl;
 
+  
+  constraints.clear();
+  
+  DoFTools::make_periodicity_constraints(dof_handler, 0, 1, 0, constraints); // x-direction
+  DoFTools::make_periodicity_constraints(dof_handler, 2, 3, 1, constraints); // y-direction
+  DoFTools::make_periodicity_constraints(dof_handler, 4, 5, 2, constraints); // z-direction
+
+  constraints.close();
+
+  std::cout << "Number of constraints: " << constraints.n_constraints() << std::endl;
+
   DynamicSparsityPattern dsp(dof_handler.n_dofs());
-  DoFTools::make_sparsity_pattern(dof_handler, dsp);
+  DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints);
   sparsity_pattern.copy_from(dsp);
 
   system_matrix.reinit(sparsity_pattern);
@@ -238,53 +236,49 @@ void Step3::assemble_system()
         }
       cell->get_dof_indices(local_dof_indices);
 
-      for (const unsigned int i : fe_values.dof_indices())
-        for (const unsigned int j : fe_values.dof_indices())
-          system_matrix.add(local_dof_indices[i],
-                            local_dof_indices[j],
-                            cell_matrix(i, j));
-
-      for (const unsigned int i : fe_values.dof_indices())
-        system_rhs(local_dof_indices[i]) += cell_rhs(i);
+      constraints.distribute_local_to_global(cell_matrix, cell_rhs,
+                                              local_dof_indices,
+                                              system_matrix, system_rhs);
     }
-
-
-  std::map<types::global_dof_index, double> boundary_values;
-  VectorTools::interpolate_boundary_values(dof_handler,
-                                           types::boundary_id(0),
-                                           BoundaryValues(),
-                                           boundary_values);
-  MatrixTools::apply_boundary_values(boundary_values,
-                                     system_matrix,
-                                     solution,
-                                     system_rhs);
-}
+  }
 
 
 
 void Step3::solve()
 {
-  SolverControl            solver_control(1000, 1e-6 * system_rhs.l2_norm());
+  SolverControl            solver_control(1000, 1e-9);
   SolverCG<Vector<double>> solver(solver_control);
   solver.solve(system_matrix, solution, system_rhs, PreconditionIdentity());
 
-  std::cout << solver_control.last_step()
-            << " CG iterations needed to obtain convergence." << std::endl;
+  constraints.distribute(solution);
+
+  //std::cout << solver_control.last_step()
+  //          << " CG iterations needed to obtain convergence." << std::endl;
+  
+  
 }
 
 
 
 void Step3::output_results() const
 {
+  static std::vector<std::pair<double, std::string>> times_and_names;
+
   DataOut<3> data_out;
   data_out.attach_dof_handler(dof_handler);
   data_out.add_data_vector(solution, "solution");
   data_out.build_patches();
 
-  const std::string filename = "solution.vtk";
-  std::ofstream     output(filename);
-  data_out.write_vtk(output);
+  const std::string filename = "output/solution-" + Utilities::int_to_string(timestep_number) + ".vtu";
+  std::ofstream output(filename);
+  data_out.write(output, DataOutBase::vtu);
+
   std::cout << "Output written to " << filename << std::endl;
+  times_and_names.push_back(
+                {time, filename});
+
+  std::ofstream pvd_output ("solution.pvd");
+  DataOutBase::write_pvd_record (pvd_output, times_and_names);
 }
 
 
