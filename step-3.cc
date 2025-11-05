@@ -55,6 +55,7 @@
 #include <deal.II/numerics/vector_tools.h>
 #include <deal.II/numerics/data_out.h>
 #include <deal.II/numerics/error_estimator.h>
+#include <deal.II/lac/solver_gmres.h>
 
 using namespace dealii;
 
@@ -68,19 +69,10 @@ public:
 double BoundaryValues::value(const Point<3> &p,
                                   const unsigned int component) const
 {
-  const double tol = 1e-10; // tolerance
+  const double time = this->get_time();
 
-  if (p[0] < 0) {
-    return 0;
-  }
-  if (p[0] > 0) {
-    return 1;
-  }
-  else {
-    return 0;
-  }
-
-  return 0.0;
+  //return 10*std::cos(M_PI*p[0])*std::cos(M_PI*p[1]);
+  return std::cos(p[0] - 11*p[1] + 4*p[2])*std::exp(p[0]*p[1]*p[2]);
 }
 
 class Step3
@@ -97,6 +89,7 @@ private:
   void assemble_system();
   void solve();
   void output_results() const;
+  double determine_step_length() const;
 
   Triangulation<3> triangulation;
   const FE_Q<3>    fe;
@@ -173,7 +166,7 @@ void Step3::assemble_system()
   const QGauss<3> quadrature_formula(fe.degree + 1);
   FEValues<3> fe_values(fe,
                         quadrature_formula,
-                        update_values | update_gradients | update_JxW_values);
+                        update_values | update_gradients | update_quadrature_points | update_JxW_values);
 
   const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
 
@@ -182,6 +175,8 @@ void Step3::assemble_system()
 
   std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
+  system_matrix = 0;
+  system_rhs = 0;
 
  const unsigned int dim=3;
   //======= ACEGEN input
@@ -212,9 +207,11 @@ void Step3::assemble_system()
       cell_matrix = 0;
       cell_rhs    = 0;
 
-      fe_values.get_function_gradients(newton_iterate, gradients_newton);
+      //fe_values.get_function_gradients(solution, gradients_newton);
       fe_values.get_function_values(oldsolution, values_old);
-      fe_values.get_function_values(newton_iterate, values_newton);
+      fe_values.get_function_values(solution, values_newton);
+      // We have to calculate gradients_newton from solution, not newton_iterate
+      fe_values.get_function_gradients(solution, gradients_newton);
 
 
       for (const unsigned int q_index : fe_values.quadrature_point_indices())
@@ -253,7 +250,7 @@ void Step3::assemble_system()
                  fe_values.JxW(q_index);           // dx
 
           for (const unsigned int i : fe_values.dof_indices())
-            cell_rhs(i) += (fe_values.shape_value(i, q_index) * 
+            cell_rhs(i) -= (fe_values.shape_value(i, q_index) * 
                             dPsiDU[q_index]
                         + fe_values.shape_grad(i, q_index) * dPsiDgradU[q_index]
                         ) *
@@ -262,28 +259,34 @@ void Step3::assemble_system()
       cell->get_dof_indices(local_dof_indices);
 
       constraints.distribute_local_to_global(cell_matrix, cell_rhs,
-                                            local_dof_indices,
-                                            system_matrix, system_rhs);
+                                              local_dof_indices,
+                                              system_matrix, system_rhs);
     }
   }
 
-
+double Step3::determine_step_length() const
+{
+  return 1.0;
+}
 
 void Step3::solve()
 {
-  SolverControl            solver_control(1000, 1e-9);
+  SolverControl            solver_control(1000, 1e-5);
   SolverCG<Vector<double>> solver(solver_control);
-  solver.solve(system_matrix, solution, system_rhs, PreconditionIdentity());
+  //solver.solve(system_matrix, solution, system_rhs, PreconditionIdentity());
+  solver.solve(system_matrix, newton_iterate, system_rhs, PreconditionIdentity());  
+
+  constraints.distribute(newton_iterate);
+
+  const double alpha = determine_step_length();
+  solution.add(alpha, newton_iterate);  
 
   constraints.distribute(solution);
-
   //std::cout << solver_control.last_step()
   //          << " CG iterations needed to obtain convergence." << std::endl;
   
   
 }
-
-
 
 void Step3::output_results() const
 {
@@ -312,40 +315,21 @@ void Step3::run()
 {
   make_grid();
   setup_system();
-  
-  time = 0;
-  final_time = 0.1;
-  delta_t = 0.01;
-  timestep_number= 0;
-  
-  solution = 0;
 
-  while (time < final_time)
+  solution = 0;
+  constraints.distribute(solution);
+  unsigned int newton_iteration = 0;
+
+  double residual_norm = 1.0;
+  while (residual_norm > 1e-10 && newton_iteration < 10)
   {
-    oldsolution = solution;
-    
-    newton_iterate = oldsolution;
-    unsigned int newton_iteration = 0;
-    double residual_norm = 1.0;
-    while (residual_norm > 1e-5 && newton_iteration < 10)
-    {
-      assemble_system();
-      solve();
-      newton_iterate += solution;
-      
-    
-      residual_norm = system_rhs.l2_norm();
-      newton_iteration++;
-    }
-    
-    solution = newton_iterate;
-    time += delta_t;
-    output_results();
-    timestep_number++;
+    assemble_system();
+    solve();
+    residual_norm = system_rhs.l2_norm();
+    std::cout << "The norm of our solution is: " << residual_norm << std::endl;
+    newton_iteration++;
   }
-  
-  assemble_system();
-  solve();
+
   output_results();
 }
 
