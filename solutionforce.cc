@@ -77,7 +77,16 @@ public:
 double RightHandSide::value(const Point<3> &p,
                                  const unsigned int /*component*/) const
 {
-  return p[0];
+  const double t = this->get_time();
+  const double S = std::sin(numbers::PI * p[0]*2)
+                 * std::sin(numbers::PI * p[1]*2)
+                 * std::sin(numbers::PI * p[2]*2);
+  const double u_exact = S * std::exp(-t);
+
+  const double f = (-1.0 + 12.0 * numbers::PI * numbers::PI) * u_exact
+                   + u_exact * u_exact;
+
+  return f;
 }
 
 class BoundaryValues : public Function<3>
@@ -92,7 +101,7 @@ double BoundaryValues::value(const Point<3> &p,
 {
   //const double time = this->get_time();
 
-  return 2*p[0];
+  return 0*p[0];
   //return 10*std::cos(M_PI*p[0])*std::cos(M_PI*p[1]);
   //return std::cos(p[0] - 11*p[1] + 4*p[2])*std::exp(p[0]*p[1]*p[2]);
 }
@@ -133,12 +142,47 @@ private:
   unsigned int timestep_number;
 };
 
+
+class ExactSolution : public Function<3>
+{
+  public:
+  ExactSolution(const unsigned int n_components = 1, const double time = 0.)
+  : Function<3>(n_components, time)
+  {}
+  
+  virtual double value(const Point<3> &p,
+                      const unsigned int /*component*/ = 0) const override
+  {
+    const double t = this->get_time();
+
+    const double S = std::sin(numbers::PI * p[0]*2)
+                   * std::sin(numbers::PI * p[1]*2)
+                   * std::sin(numbers::PI * p[2]*2);
+    return S * std::exp(-t);
+
+  }
+};
+
+class InitialValues : public Function<3>
+{
+  public:
+    InitialValues(const unsigned int n_components = 1, const double time = 0.)
+      : Function<3>(n_components, time)
+    {}
+  
+    virtual double value(const Point<3>  &p,
+                        const unsigned int component = 0) const override
+    {
+      return ExactSolution(1, this->get_time()).value(p, component);
+    }
+};
+
 Step3::Step3()
   : fe(/* polynomial degree = */ 1)
   , dof_handler(triangulation)
   , time(0.0)
-  , final_time(0.1)
-  , delta_t(0.001)
+  , final_time(0.4)
+  , delta_t(0.1)
   , timestep_number(0)
 {}
 
@@ -167,7 +211,7 @@ void Step3::setup_system()
   DoFTools::make_periodicity_constraints(dof_handler, 0, 1, 0, constraints); // x-direction
   DoFTools::make_periodicity_constraints(dof_handler, 2, 3, 1, constraints); // y-direction
   DoFTools::make_periodicity_constraints(dof_handler, 4, 5, 2, constraints); // z-direction
-  
+
   constraints.close();
 
   std::cout << "Number of constraints: " << constraints.n_constraints() << std::endl;
@@ -236,7 +280,6 @@ void Step3::assemble_system()
       //fe_values.get_function_gradients(solution, gradients_newton);
       fe_values.get_function_values(oldsolution, values_old);
       fe_values.get_function_values(solution, values_newton);
-      // We have to calculate gradients_newton from solution, not newton_iterate
       fe_values.get_function_gradients(solution, gradients_newton);
 
 
@@ -342,8 +385,31 @@ void Step3::run()
 {
   make_grid();
   setup_system();
-  solution = 0.0;
-  constraints.distribute(solution);
+
+  {
+    VectorTools::project(dof_handler,
+                        constraints,
+                        QGauss<3>(fe.degree + 1),
+                        InitialValues(1, time),
+                        solution);
+
+    constraints.distribute(solution);
+  }
+
+  Vector<float> difference_per_cell(triangulation.n_active_cells());
+  VectorTools::integrate_difference(dof_handler,
+                                    solution,
+                                    InitialValues(1, time),
+                                    difference_per_cell,
+                                    QGauss<3>(fe.degree + 1),
+                                    VectorTools::L2_norm);
+  const double L2_error =
+  VectorTools::compute_global_error(triangulation,
+                                    difference_per_cell,
+                                    VectorTools::L2_norm);
+
+  std::cout << "The difference is " << L2_error << std::endl;
+
   output_results();
 
   time+=delta_t;
@@ -353,19 +419,31 @@ void Step3::run()
   while (time < final_time)
   {
     oldsolution = solution;
-    constraints.distribute(oldsolution);
     double residual_norm = 1.0;
     unsigned int newton_iteration = 0;
     while (residual_norm > 1e-10 && newton_iteration < 10)
     {
+      //newton_iterate = 0.0;
       assemble_system();
       residual_norm = system_rhs.l2_norm();
 
       solve();
-      std::cout << "The norm of our solution is: " << residual_norm << std::endl;
+
+      VectorTools::integrate_difference(dof_handler,
+                                        solution,
+                                        InitialValues(1, time),
+                                        difference_per_cell,
+                                        QGauss<3>(fe.degree + 1),
+                                        VectorTools::L2_norm);
+      const double L2_error =
+      VectorTools::compute_global_error(triangulation,
+                                        difference_per_cell,
+                                        VectorTools::L2_norm);
 
       newton_iteration++;
     }
+    std::cout << "The difference is " << L2_error << std::endl;
+    std::cout << "The norm of our solution is: " << residual_norm << std::endl;
     time+=delta_t;
     timestep_number++;
     output_results();

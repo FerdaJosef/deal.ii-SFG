@@ -77,7 +77,16 @@ public:
 double RightHandSide::value(const Point<3> &p,
                                  const unsigned int /*component*/) const
 {
-  return p[0];
+  const double t = this->get_time();
+  const double S = std::sin(numbers::PI * p[0])
+                 * std::sin(numbers::PI * p[1])
+                 * std::sin(numbers::PI * p[2]);
+  const double u_exact = S * std::exp(-t);
+
+  const double f = (-1.0 + 3.0 * numbers::PI * numbers::PI) * u_exact
+                   + u_exact * u_exact;
+
+  return f;
 }
 
 class BoundaryValues : public Function<3>
@@ -137,7 +146,7 @@ Step3::Step3()
   : fe(/* polynomial degree = */ 1)
   , dof_handler(triangulation)
   , time(0.0)
-  , final_time(0.1)
+  , final_time(1.0)
   , delta_t(0.001)
   , timestep_number(0)
 {}
@@ -146,7 +155,7 @@ void Step3::make_grid()
 {
   GridGenerator::hyper_cube(triangulation, -1, 1, true);
  
-  triangulation.refine_global(4);
+  triangulation.refine_global(5);
 
   std::cout << "Number of active cells: " << triangulation.n_active_cells()
             << std::endl;
@@ -164,10 +173,15 @@ void Step3::setup_system()
   
   constraints.clear();
   
-  DoFTools::make_periodicity_constraints(dof_handler, 0, 1, 0, constraints); // x-direction
+  //DoFTools::make_periodicity_constraints(dof_handler, 0, 1, 0, constraints); // x-direction
   DoFTools::make_periodicity_constraints(dof_handler, 2, 3, 1, constraints); // y-direction
   DoFTools::make_periodicity_constraints(dof_handler, 4, 5, 2, constraints); // z-direction
-  
+
+  VectorTools::interpolate_boundary_values(dof_handler,
+                                          types::boundary_id(0),
+                                          BoundaryValues(),
+                                          constraints);
+
   constraints.close();
 
   std::cout << "Number of constraints: " << constraints.n_constraints() << std::endl;
@@ -278,7 +292,7 @@ void Step3::assemble_system()
           const auto &x_q = fe_values.quadrature_point(q_index);
           for (const unsigned int i : fe_values.dof_indices())
             cell_rhs(i) -= (fe_values.shape_value(i, q_index) * 
-                            (dPsiDU[q_index] + rhs_function.value(x_q))
+                            (dPsiDU[q_index])
                         + fe_values.shape_grad(i, q_index) * dPsiDgradU[q_index]
                         ) *
                             fe_values.JxW(q_index);
@@ -343,7 +357,6 @@ void Step3::run()
   make_grid();
   setup_system();
   solution = 0.0;
-  constraints.distribute(solution);
   output_results();
 
   time+=delta_t;
@@ -353,7 +366,6 @@ void Step3::run()
   while (time < final_time)
   {
     oldsolution = solution;
-    constraints.distribute(oldsolution);
     double residual_norm = 1.0;
     unsigned int newton_iteration = 0;
     while (residual_norm > 1e-10 && newton_iteration < 10)
