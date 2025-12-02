@@ -78,13 +78,13 @@ double RightHandSide::value(const Point<3> &p,
                                  const unsigned int /*component*/) const
 {
   const double t = this->get_time();
-  const double S = std::sin(numbers::PI * p[0]*2)
-                 * std::sin(numbers::PI * p[1]*2)
-                 * std::sin(numbers::PI * p[2]*2);
-  const double u_exact = S * std::exp(-t);
+  const double S = std::sin(numbers::PI * p[0]*2)**2
+                 * std::sin(numbers::PI * p[1]*2)**2
+                 * std::sin(numbers::PI * p[2]*2)**2;
+  const double f = S * std::exp(-6*numbers::PI*t);
 
-  const double f = (-1.0 + 12.0 * numbers::PI * numbers::PI) * u_exact
-                   + u_exact * u_exact;
+  /*const double f = (-1.0 + 12.0 * numbers::PI * numbers::PI) * u_exact
+                   + u_exact * u_exact; */
 
   return f;
 }
@@ -155,10 +155,10 @@ class ExactSolution : public Function<3>
   {
     const double t = this->get_time();
 
-    const double S = std::sin(numbers::PI * p[0]*2)
-                   * std::sin(numbers::PI * p[1]*2)
-                   * std::sin(numbers::PI * p[2]*2);
-    return S * std::exp(-t);
+    const double S = std::sin(numbers::PI * p[0])
+                   * std::sin(numbers::PI * p[1])
+                   * std::sin(numbers::PI * p[2]);
+    return S * std::exp(-3*numbers::PI *t);
 
   }
 };
@@ -208,9 +208,14 @@ void Step3::setup_system()
   
   constraints.clear();
   
-  DoFTools::make_periodicity_constraints(dof_handler, 0, 1, 0, constraints); // x-direction
-  DoFTools::make_periodicity_constraints(dof_handler, 2, 3, 1, constraints); // y-direction
-  DoFTools::make_periodicity_constraints(dof_handler, 4, 5, 2, constraints); // z-direction
+  //DoFTools::make_periodicity_constraints(dof_handler, 0, 1, 0, constraints); // x-direction
+  //DoFTools::make_periodicity_constraints(dof_handler, 2, 3, 1, constraints); // y-direction
+  //DoFTools::make_periodicity_constraints(dof_handler, 4, 5, 2, constraints); // z-direction
+
+  VectorTools::interpolate_boundary_values(dof_handler,
+                                          types::boundary_id(0),
+                                          BoundaryValues(),
+                                          constraints);
 
   constraints.close();
 

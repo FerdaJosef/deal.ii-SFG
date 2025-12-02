@@ -155,7 +155,7 @@ void Step3::make_grid()
 {
   GridGenerator::hyper_cube(triangulation, -1, 1, true);
  
-  triangulation.refine_global(5);
+  triangulation.refine_global(4);
 
   std::cout << "Number of active cells: " << triangulation.n_active_cells()
             << std::endl;
@@ -172,10 +172,6 @@ void Step3::setup_system()
 
   
   constraints.clear();
-  
-  //DoFTools::make_periodicity_constraints(dof_handler, 0, 1, 0, constraints); // x-direction
-  DoFTools::make_periodicity_constraints(dof_handler, 2, 3, 1, constraints); // y-direction
-  DoFTools::make_periodicity_constraints(dof_handler, 4, 5, 2, constraints); // z-direction
 
   VectorTools::interpolate_boundary_values(dof_handler,
                                           types::boundary_id(0),
