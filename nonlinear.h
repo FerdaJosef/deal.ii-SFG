@@ -18,7 +18,7 @@ void laplace_nonlinear(std::vector<double> &v,double (*Uin),double (*Uold)
 {
 v[1]=(*Uin);
 v[6]=(*deltat);
-(*dPsiDu)=-1e0+(v[1]*v[1])+(-(*Uold)+v[1])/v[6];
+(*dPsiDu)=-1.0+(v[1]*v[1])+(-(*Uold)+v[1])/v[6];
 dPsidGradU[0]=0.1e0*GradU[0];
 dPsidGradU[1]=0.1e0*GradU[1];
 dPsidGradU[2]=0.1e0*GradU[2];

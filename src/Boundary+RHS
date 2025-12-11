@@ -1,0 +1,46 @@
+class RightHandSide : public Function<3>
+{
+public:
+  RightHandSide()
+    : Function()
+    , period(0.2)
+  {}
+
+  virtual double value(const Point<3>  &p,
+                       const unsigned int component = 0) const override;
+  
+  private:
+    const double period;
+};
+
+double RightHandSide::value(const Point<3> &p,
+                                 const unsigned int /*component*/) const
+{
+  const double t = this->get_time();
+  const double S = std::pow(std::sin(numbers::PI * p[0]), 2)
+                 * std::pow(std::sin(numbers::PI * p[1]), 2)
+                 * std::pow(std::sin(numbers::PI * p[2]), 2);
+  const double f = S * std::exp(-6*numbers::PI*numbers::PI*t);
+
+  /*const double f = (-1.0 + 12.0 * numbers::PI * numbers::PI) * u_exact
+                   + u_exact * u_exact; */
+
+  return f;
+}
+
+class BoundaryValues : public Function<3>
+{
+public:
+  virtual double value(const Point<3>  &p,
+                       const unsigned int component = 0) const override;
+};
+
+double BoundaryValues::value(const Point<3> &p,
+                                  const unsigned int /*component*/) const
+{
+  //const double time = this->get_time();
+
+  return 1.0;
+  //return 10*std::cos(M_PI*p[0])*std::cos(M_PI*p[1]);
+  //return std::cos(p[0] - 11*p[1] + 4*p[2])*std::exp(p[0]*p[1]*p[2]);
+}

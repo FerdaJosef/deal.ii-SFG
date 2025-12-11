@@ -40,7 +40,7 @@
 #include <deal.II/numerics/data_out.h>
 #include <fstream>
 #include <iostream>
-#include "AllenCahn.h"
+#include "nonlinear.h"
 #include <cmath>
 
 #include <deal.II/base/conditional_ostream.h>
@@ -102,7 +102,7 @@ double BoundaryValues::value(const Point<3> &p,
 {
   //const double time = this->get_time();
 
-  return 1.0;
+  return 0*p[0];
   //return 10*std::cos(M_PI*p[0])*std::cos(M_PI*p[1]);
   //return std::cos(p[0] - 11*p[1] + 4*p[2])*std::exp(p[0]*p[1]*p[2]);
 }
@@ -121,8 +121,8 @@ private:
   void assemble_system();
   void solve();
   void output_results() const;
-  void time_step_update();
   double determine_step_length() const;
+  void write_maxima();
   double compute_residual();
 
   Triangulation<3> triangulation;
@@ -144,12 +144,8 @@ private:
   double delta_t;
   unsigned int timestep_number;
 
-  int max_it;
-  double max_multiplier;
-  double min_multiplier;
-  int optimal_it;
-  double dt_max; double dt_min;
-  int newton_iteration;
+  std::vector<double> time_values;
+  std::vector<double> maxima;
 };
 
 class ExactSolution : public Function<3>
@@ -170,6 +166,7 @@ class ExactSolution : public Function<3>
 
     double sample;
     sample = d(gen);
+    //return 10*std::cos(M_PI*p[0])*std::cos(M_PI*p[1]);
     return sample;
 
   }
@@ -193,16 +190,9 @@ Step3::Step3()
   : fe(/* polynomial degree = */ 1)
   , dof_handler(triangulation)
   , time(0.0)
-  , final_time(0.051)
-  , delta_t(0.001)
+  , final_time(1.0)
+  , delta_t(0.1)
   , timestep_number(0)
-  , max_it(10)
-  , max_multiplier(1.6)
-  , min_multiplier(0.5)
-  , optimal_it(6)
-  , dt_max(0.2)
-  , dt_min(1e-6)
-  , newton_iteration(0)
 {}
 
 void Step3::make_grid()
@@ -213,6 +203,15 @@ void Step3::make_grid()
 
   std::cout << "Number of active cells: " << triangulation.n_active_cells()
             << std::endl;
+}
+
+void Step3::write_maxima()
+{
+  std::ofstream out("evolution.txt");
+  for (unsigned int i = 0; i < time_values.size(); ++i)
+  {
+      out << time_values[i] << " " << maxima[i] << "\n";
+  }
 }
 
 double Step3::compute_residual()
@@ -240,9 +239,14 @@ void Step3::setup_system()
   
   constraints.clear();
   
-  DoFTools::make_periodicity_constraints(dof_handler, 0, 1, 0, constraints); // x-direction
-  DoFTools::make_periodicity_constraints(dof_handler, 2, 3, 1, constraints); // y-direction
-  DoFTools::make_periodicity_constraints(dof_handler, 4, 5, 2, constraints); // z-direction
+  //DoFTools::make_periodicity_constraints(dof_handler, 0, 1, 0, constraints); // x-direction
+  //DoFTools::make_periodicity_constraints(dof_handler, 2, 3, 1, constraints); // y-direction
+  //DoFTools::make_periodicity_constraints(dof_handler, 4, 5, 2, constraints); // z-direction
+
+  VectorTools::interpolate_boundary_values(dof_handler,
+                                          types::boundary_id(0),
+                                          BoundaryValues(),
+                                          constraints);
 
   constraints.close();
 
@@ -373,7 +377,7 @@ double Step3::determine_step_length() const
 
 void Step3::solve()
 {
-  SolverControl            solver_control(1000, 1e-8 * system_rhs.l2_norm());
+  SolverControl            solver_control(1000, 1e-6 * system_rhs.l2_norm());
   SolverCG<Vector<double>> solver(solver_control);
   //solver.solve(system_matrix, solution, system_rhs, PreconditionIdentity());
   solver.solve(system_matrix, newton_iterate, system_rhs, PreconditionIdentity());  
@@ -388,27 +392,6 @@ void Step3::solve()
   //          << " CG iterations needed to obtain convergence." << std::endl;
   
   
-}
-
-void Step3::time_step_update()
-{
-    if (newton_iteration <= optimal_it) {
-      // self.dt.assign(min(dt_max, float(self.dt) * min(1.6, optimal_it / (iterations + 0.001))));
-        delta_t = std::min(dt_max, delta_t*std::min(max_multiplier, double(optimal_it/(newton_iteration + 0.001))));
-    }
-    else {
-      // self.dt.assign(float(self.dt) * max(0.5, optimal_it / iterations));
-      delta_t = delta_t*std::max(min_multiplier, double(optimal_it / newton_iteration));
-    }
-
-    if (time + delta_t > final_time) {
-        delta_t = final_time - time;
-    }
-      
-    else if (delta_t < 1e-6) {
-        throw std::invalid_argument("Time step too small!");
-    }
-    std::cout << "Our time step is " << delta_t << std::endl;
 }
 
 void Step3::output_results() const
@@ -447,6 +430,9 @@ void Step3::run()
                         solution);
 
   constraints.distribute(solution);
+
+  maxima.push_back(solution.linfty_norm());
+  time_values.push_back(time);
                 
   //std::cout << "The difference is " << L2_error << std::endl;
 
@@ -457,13 +443,13 @@ void Step3::run()
   {
     time+=delta_t;
     timestep_number++;
-    std::cout<< "Time: " << time << std::endl;
+
     oldsolution = solution;
-    newton_iteration = 0;
     double residual_norm = 1.0;
-    while (residual_norm > 1e-10 && newton_iteration < max_it)
+    unsigned int newton_iteration = 0;
+    while (residual_norm > 1e-10 && newton_iteration < 200)
     {
-      //newton_iterate = 0.0;
+      newton_iterate = 0.0;
       assemble_system();
       residual_norm = system_rhs.l2_norm();
 
@@ -473,25 +459,13 @@ void Step3::run()
 
       newton_iteration++;
     }
+    maxima.push_back(solution.linfty_norm());
+    time_values.push_back(time);
 
-    if (newton_iteration == max_it)
-    {
-        std::cout << "Newton failed. Reducing time step." << std::endl;
-        solution = oldsolution;
-
-        time -= delta_t;
-
-        delta_t *= 0.5;
-        if (delta_t < dt_min)
-            throw std::runtime_error("Time step too small!");
-
-        continue;
-    }
-
-    std::cout << newton_iteration << std::endl;
-    time_step_update();
+    std::cout << "The maximum is: " << maxima.back() << std::endl;
     output_results();
   }
+  write_maxima();
 }
 
 
