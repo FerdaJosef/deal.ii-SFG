@@ -193,7 +193,7 @@ Step3::Step3()
   : fe(/* polynomial degree = */ 1)
   , dof_handler(triangulation)
   , time(0.0)
-  , final_time(0.051)
+  , final_time(1.0)
   , delta_t(0.001)
   , timestep_number(0)
   , max_it(10)
@@ -480,6 +480,7 @@ void Step3::run()
         solution = oldsolution;
 
         time -= delta_t;
+        timestep_number--;
 
         delta_t *= 0.5;
         if (delta_t < dt_min)
