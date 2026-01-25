@@ -16,7 +16,6 @@ void laplace(std::vector<double> &v,double (*Uin),double (*Uold)
      ,dealii::Tensor<1, 3> &GradU,double (*dPsiDu),dealii::Tensor<1,3> &dPsidGradU,double (*dPsiDu2)
      ,dealii::Tensor<2,3> &dPsidGradU2,dealii::Tensor<1,3>& dPsidUdGradU,double (*deltat))
 {
-int i01;
 v[6]=(*deltat);
 (*dPsiDu)=((*Uin)-(*Uold))/v[6];
 dPsidGradU[0]=0.1e0*GradU[0];
