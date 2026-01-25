@@ -37,10 +37,13 @@
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/precondition.h>
 
+#include <deal.II/fe/fe_system.h>
+#include <deal.II/fe/fe_q.h>
+
 #include <deal.II/numerics/data_out.h>
 #include <fstream>
 #include <iostream>
-#include "laplace.h"
+#include "vector-valued.h"
 
 using namespace dealii;
 
@@ -54,27 +57,7 @@ public:
 double BoundaryValues::value(const Point<3> &p,
                                   const unsigned int /*component*/) const
 {
-  const double tol = 1e-10; // tolerance
-
-  if (std::fabs(p[0] + 1.0) < tol)
-    return 0.0;
-
-  if (std::fabs(p[0] - 1.0) < tol)
-    return 1.0;
-
-  if (std::fabs(p[1] + 1.0) < tol)
-    return 0.0;
-
-  if (std::fabs(p[1] - 1.0) < tol)
-    return 1.0;
-
-  if (std::fabs(p[2] + 1.0) < tol)
-    return 0.0;
-
-  if (std::fabs(p[2] - 1.0) < tol)
-    return 1.0;
-
-  return 0.0;
+  return p[0]+p[1]+p[2];
 }
 
 class Step3
@@ -93,7 +76,7 @@ private:
   void output_results() const;
 
   Triangulation<3> triangulation;
-  const FE_Q<3>    fe;
+  const FESystem<3>    fe;
   DoFHandler<3>    dof_handler;
 
   SparsityPattern      sparsity_pattern;
@@ -107,7 +90,7 @@ private:
 
 
 Step3::Step3()
-  : fe(/* polynomial degree = */ 1)
+  : fe(FE_Q<3>(1)^2)
   , dof_handler(triangulation)
 {}
 
@@ -153,6 +136,7 @@ void Step3::assemble_system()
                         update_values | update_gradients | update_JxW_values);
 
   const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
+  const unsigned int n_q_points    = quadrature_formula.size();
 
   FullMatrix<double> cell_matrix(dofs_per_cell, dofs_per_cell);
   Vector<double>     cell_rhs(dofs_per_cell);
@@ -162,21 +146,21 @@ void Step3::assemble_system()
 
  const unsigned int dim=3;
   //======= ACEGEN input
-  std::vector<double >  values_old(     quadrature_formula.size());
-  std::vector<double >  values_newton(quadrature_formula.size());
-  std::vector<Tensor<1, dim>>  gradients_newton(quadrature_formula.size());
+  std::vector<Tensor<1, 2>>  values_old(n_q_points);
+  std::vector<Tensor<1, 2>>  values_newton(n_q_points);
+  std::vector<Tensor<2, dim>>  gradients_newton(n_q_points);
   std::vector<double> acegen_scratch(256);
 
 
   //Acegen OUTPUT
   //RESIDUAL
-  std::vector<double> dPsiDU(quadrature_formula.size());
-  std::vector<Tensor<1, dim>> dPsiDgradU(quadrature_formula.size());
+  std::vector<Tensor<1, 2>> dPsiDU(n_q_points);
+  std::vector<Tensor<2, dim>> dPsiDgradU(n_q_points);
 
   //TANGENT
-  std::vector<double> dPsiDU2(quadrature_formula.size());
-  std::vector<Tensor<1, dim>> dPsiDUdgradu(quadrature_formula.size());
-  std::vector<Tensor<2, dim>> dPsiDgradu2(quadrature_formula.size());
+  std::vector<Tensor<2,2>> dPsiDU2(n_q_points);
+  std::vector<Tensor<3, dim>> dPsiDUdgradu(n_q_points);
+  std::vector<Tensor<4, dim>> dPsiDgradu2(n_q_points);
   //======= ACEGEN=======
 
   double delta_t=0.01;
@@ -198,14 +182,12 @@ void Step3::assemble_system()
         {
         laplace(acegen_scratch,
                 &(values_newton[q_index]),
-            &(values_old[q_index]),
             gradients_newton[q_index],
             &(dPsiDU[q_index]),
             dPsiDgradU[q_index],
             &dPsiDU2[q_index],
             dPsiDgradu2[q_index],
             dPsiDUdgradu[q_index],
-            &delta_t
           );
 
           for (const unsigned int i : fe_values.dof_indices())
