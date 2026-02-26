@@ -43,22 +43,28 @@
 #include <deal.II/numerics/data_out.h>
 #include <fstream>
 #include <iostream>
-#include "vector-valued.h"
+#include "equation.h"
 
 using namespace dealii;
 
 class BoundaryValues : public Function<3>
 {
 public:
+  BoundaryValues();
   virtual double value(const Point<3>  &p,
                        const unsigned int component = 0) const override;
 };
+
+BoundaryValues::BoundaryValues()
+  : Function<3>(2)
+{}
 
 double BoundaryValues::value(const Point<3> &p,
                                   const unsigned int /*component*/) const
 {
   return p[0]+p[1]+p[2];
 }
+
 
 class Step3
 {
@@ -90,7 +96,7 @@ private:
 
 
 Step3::Step3()
-  : fe(FE_Q<3>(1)^2)
+  : fe(FE_Q<3>(1), 2)
   , dof_handler(triangulation)
 {}
 
@@ -146,21 +152,37 @@ void Step3::assemble_system()
 
  const unsigned int dim=3;
   //======= ACEGEN input
-  std::vector<Tensor<1, 2>>  values_old(n_q_points);
-  std::vector<Tensor<1, 2>>  values_newton(n_q_points);
-  std::vector<Tensor<2, dim>>  gradients_newton(n_q_points);
+  std::vector<Vector<double>> values_newton(n_q_points, Vector<double>(2));
+
+  std::vector<Vector<double>> values_old(n_q_points, Vector<double>(2));
+
+  std::vector<std::vector<Tensor<1, dim>>> gradients_newton(n_q_points, std::vector<Tensor<1, dim>>(2));
+// USING 
   std::vector<double> acegen_scratch(256);
 
 
   //Acegen OUTPUT
   //RESIDUAL
-  std::vector<Tensor<1, 2>> dPsiDU(n_q_points);
-  std::vector<Tensor<2, dim>> dPsiDgradU(n_q_points);
+  std::vector<Vector<double>> dPsiDu(n_q_points, Vector<double>(2));
+  
+  std::vector<std::vector<Tensor<1,dim>>> dPsidGradU(
+      n_q_points,
+      std::vector<Tensor<1,dim>>(2));
 
   //TANGENT
-  std::vector<Tensor<2,2>> dPsiDU2(n_q_points);
-  std::vector<Tensor<3, dim>> dPsiDUdgradu(n_q_points);
-  std::vector<Tensor<4, dim>> dPsiDgradu2(n_q_points);
+  std::vector<FullMatrix<double>> dPsiDu2(n_q_points, FullMatrix<double>(2,2));
+  
+  std::vector<std::vector<std::vector<Tensor<1,dim>>>> dPsidUdGradU(
+      n_q_points,
+      std::vector<std::vector<Tensor<1,dim>>>(
+          2,
+          std::vector<Tensor<1,dim>>(2)));
+
+  std::vector<std::vector<std::vector<Tensor<2,dim>>>> dPsidGradU2(
+      n_q_points,
+      std::vector<std::vector<Tensor<2,dim>>>(
+          2,
+          std::vector<Tensor<2,dim>>(2)));
   //======= ACEGEN=======
 
   double delta_t=0.01;
@@ -180,43 +202,62 @@ void Step3::assemble_system()
 
       for (const unsigned int q_index : fe_values.quadrature_point_indices())
         {
-        laplace(acegen_scratch,
-                &(values_newton[q_index]),
+        equation(acegen_scratch,
+                values_newton[q_index],
             gradients_newton[q_index],
-            &(dPsiDU[q_index]),
-            dPsiDgradU[q_index],
-            &dPsiDU2[q_index],
-            dPsiDgradu2[q_index],
-            dPsiDUdgradu[q_index],
+            dPsiDu[q_index],
+            dPsidGradU[q_index],
+            dPsiDu2[q_index],
+            dPsidUdGradU[q_index],
+            dPsidGradU2[q_index] // 2, 2, 3, 3 
           );
 
           for (const unsigned int i : fe_values.dof_indices())
-            for (const unsigned int j : fe_values.dof_indices())
-              cell_matrix(i, j) +=
-                (fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
-                    dPsiDgradu2[q_index] *           // dPsi/d(grad u)
-                 fe_values.shape_grad(j, q_index)     // grad phi_j(x_q)
-                 + 
-                 fe_values.shape_value(i, q_index) * // phi_i(x_q)
-                    dPsiDU2[q_index] *           // dPsi/d2( u)
-                 fe_values.shape_value(j, q_index)     // phi_j(x_q)
-                 +
-                 fe_values.shape_value(i, q_index) * //  phi_i(x_q)
-                    dPsiDUdgradu[q_index] *           // dPsi/d(grad u)du
-                 fe_values.shape_grad(j, q_index)     // grad phi_j(x_q)
-                 +
-                 fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
-                    dPsiDUdgradu[q_index] *           // dPsi/d(grad u)du
-                 fe_values.shape_value(j, q_index)     // phi_j(x_q)
-                ) *
-                 fe_values.JxW(q_index);           // dx
+            {
+            const unsigned int component_i = fe.system_to_component_index(i).first;
+            
+            // number of degrees of freedom is equql to number "geometric dof" = support points
+            // function fe.system_to_component_index(i) returns a pair:
+            // first is the corresponding component of vector system
+            // second is the index of support point
+            // shape value known about it through index i
+            // ted tim vzdycky zredukuju dimenzi objektu a prevedu to na skalarni pripad
 
+              cell_rhs(i) += (fe_values.shape_value(i, q_index) * 
+                              dPsiDu[q_index][component_i]
+
+                          + fe_values.shape_grad(i, q_index) * dPsidGradU[q_index][component_i]
+                          ) *
+                              fe_values.JxW(q_index);
+              }
           for (const unsigned int i : fe_values.dof_indices())
-            cell_rhs(i) += (fe_values.shape_value(i, q_index) * 
-                            dPsiDU[q_index]
-                        + fe_values.shape_grad(i, q_index) * dPsiDgradU[q_index]
-                        ) *
-                            fe_values.JxW(q_index);
+          {
+            const unsigned int component_i = fe.system_to_component_index(i).first;
+            
+              for (const unsigned int j : fe_values.dof_indices())
+              {
+                const unsigned int component_j = fe.system_to_component_index(j).first;
+
+                cell_matrix(i, j) +=
+                    (fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
+                        dPsidGradU2[q_index][component_i][component_j] *           // dPsi/d2(grad u)
+                    fe_values.shape_grad(j, q_index)    // grad phi_j(x_q)
+                    + 
+                    fe_values.shape_value(i, q_index) * // phi_i(x_q)
+                        dPsiDu2[q_index][component_i][component_j] *           // dPsi/d2( u)
+                    fe_values.shape_value(j, q_index)     // phi_j(x_q)
+                    +
+                    fe_values.shape_value(i, q_index) * //  phi_i(x_q)
+                        dPsidUdGradU[q_index][component_i][component_j] *           // dPsi/d(grad u)du
+                    fe_values.shape_grad(j, q_index)     // grad phi_j(x_q)
+                    +
+                    fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
+                        dPsidUdGradU[q_index][component_i][component_j] *           // dPsi/d(grad u)du
+                    fe_values.shape_value(j, q_index)     // phi_j(x_q)
+                    ) *
+                    fe_values.JxW(q_index);           // dx
+            }
+          }
         }
       cell->get_dof_indices(local_dof_indices);
 
