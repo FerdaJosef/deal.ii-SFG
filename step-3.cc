@@ -63,6 +63,24 @@
 
 using namespace dealii;
 
+class BoundaryValues : public Function<3>
+{
+public:
+  BoundaryValues();
+  virtual double value(const Point<3>  &p,
+                       const unsigned int component = 0) const override;
+};
+
+BoundaryValues::BoundaryValues()
+  : Function<3>(2)
+{}
+
+double BoundaryValues::value(const Point<3> &p,
+                                  const unsigned int /*component*/) const
+{
+  return p[0]+p[1]+p[2];
+}
+
 class Step3
 {
 public:
@@ -140,7 +158,7 @@ void Step3::setup_system()
   
   VectorTools::interpolate_boundary_values(dof_handler,
                                                0,
-                                               Functions::CosineFunction<3>(0.0, 2),
+                                               BoundaryValues(),
                                                constraints);
 
   constraints.close();
@@ -311,7 +329,7 @@ void Step3::solve()
   const double alpha = determine_step_length();
   solution.add(alpha, newton_iterate);  
 
-  constraints.distribute(solution);
+  //constraints.distribute(solution);
   //std::cout << solver_control.last_step()
   //          << " CG iterations needed to obtain convergence." << std::endl;
   
