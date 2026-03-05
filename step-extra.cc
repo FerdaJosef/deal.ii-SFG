@@ -60,6 +60,7 @@
 
 using namespace dealii;
 
+template <int n>
 class RightHandSide : public Function<3>
 {
 public:
@@ -69,14 +70,14 @@ public:
   {}
 
   virtual double value(const Point<3>  &p,
-                       const unsigned int component = 0) const override;
+                       const unsigned int component = n) const override;
   
   private:
     const double period;
 };
 
 double RightHandSide::value(const Point<3> &p,
-                                 const unsigned int /*component*/) const
+                                 const unsigned int n) const
 {
   const double t = this->get_time();
   const double S = std::pow(std::sin(numbers::PI * p[0]), 2)
@@ -87,7 +88,7 @@ double RightHandSide::value(const Point<3> &p,
   /*const double f = (-1.0 + 12.0 * numbers::PI * numbers::PI) * u_exact
                    + u_exact * u_exact; */
 
-  return f;
+  return f, f;
 }
 
 class BoundaryValues : public Function<3>
@@ -155,12 +156,12 @@ private:
 class ExactSolution : public Function<3>
 {
   public:
-  ExactSolution(const unsigned int n_components = 1, const double time = 0.)
+  ExactSolution(const unsigned int n_components = 2, const double time = 0.)
   : Function<3>(n_components, time)
   {}
   
   virtual double value(const Point<3> &p,
-                      const unsigned int /*component*/ = 0) const override
+                      const unsigned int component = 2) const override
   {
     const double t = this->get_time();
 
@@ -170,7 +171,7 @@ class ExactSolution : public Function<3>
 
     double sample;
     sample = d(gen);
-    return sample;
+    return sample, sample;
 
   }
 };
@@ -443,7 +444,7 @@ void Step3::run()
   VectorTools::project(dof_handler,
                         constraints,
                         QGauss<3>(fe.degree + 1),
-                        ExactSolution(1, 0.0),
+                        ExactSolution(2, 0.0),
                         solution);
 
   constraints.distribute(solution);

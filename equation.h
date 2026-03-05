@@ -16,6 +16,7 @@ using namespace dealii;
 
 void equation(std::vector<double> &v,
     Vector<double> &U,
+    Vector<double> &U0,
     std::vector<Tensor<1,3>> &GradU,
     Vector<double> &dPsiDu, 
     std::vector<Tensor<1,3>> &dPsidGradU,
