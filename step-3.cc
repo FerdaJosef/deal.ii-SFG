@@ -62,7 +62,7 @@ BoundaryValues::BoundaryValues()
 double BoundaryValues::value(const Point<3> &p,
                                   const unsigned int /*component*/) const
 {
-  return p[0]+p[1]+p[2];
+  return p[1];
 }
 
 
@@ -195,9 +195,9 @@ void Step3::assemble_system()
       cell_matrix = 0;
       cell_rhs    = 0;
 
-      fe_values.get_function_gradients(newton_iterate, gradients_newton);
+      fe_values.get_function_gradients(solution, gradients_newton);
       fe_values.get_function_values(oldsolution, values_old);
-      fe_values.get_function_values(newton_iterate, values_newton);
+      fe_values.get_function_values(solution, values_newton);
 
 
       for (const unsigned int q_index : fe_values.quadrature_point_indices())
