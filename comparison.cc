@@ -373,7 +373,7 @@ void Step3::solve()
   solution.add(1.0, newton_iterate);
 
   std::cout << solver_control.last_step()
-            << " iterations needed to obtain convergence." << std::endl;
+            << " CG iterations needed to obtain convergence." << std::endl;
 }
 
 
@@ -424,7 +424,7 @@ void Step3::run()
   }
 
   double error = compute_residual();
-  std::cout << "Deviation is " << error << std::endl;
+  std::cout << "Deviation is" << error << std::endl;
 
   output_results(5);
 
