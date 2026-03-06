@@ -96,13 +96,25 @@ class ExactSolution : public Function<3>
 };
 
 void right_hand_side(const std::vector<Point<3>> &points,
-                         std::vector<Tensor<1, 2>>   &values)
+                     std::vector<Tensor<1,2>> &values)
 {
-  for (unsigned int point_n = 0; point_n < points.size(); ++point_n)
+  for (unsigned int q=0; q<points.size(); ++q)
   {
-    Point<3> p = points[point_n];
-    values[point_n][0] = 2*M_PI*M_PI*std::sin(M_PI*p[0])*std::sin(M_PI*p[1]);
-    values[point_n][1] = 2*M_PI*M_PI*std::cos(M_PI*p[0])*std::sin(M_PI*p[1]);
+    const double x = points[q][0];
+    const double y = points[q][1];
+
+    double u = std::sin(M_PI*x)*std::sin(M_PI*y);
+    double v = std::cos(M_PI*x)*std::sin(M_PI*y);
+
+    values[q][0] =
+        2*M_PI*M_PI*u
+        + u*u*u
+        + v;
+
+    values[q][1] =
+        2*M_PI*M_PI*v
+        + v*v*v
+        + u;
   }
 }
 
@@ -150,12 +162,15 @@ Step3::Step3()
 void Step3::make_grid()
 {
   GridGenerator::hyper_cube(triangulation, -1, 1);
-  triangulation.refine_global(3);
+  triangulation.refine_global(
+    4
+  );
 
   std::cout << "Number of active cells: " << triangulation.n_active_cells()
             << std::endl;
 }
 
+template <int n>
 void Step3::setup_system()
 {
   dof_handler.distribute_dofs(fe);
@@ -346,7 +361,7 @@ double Step3::compute_residual()
 
 void Step3::solve()
 {
-  SolverControl            solver_control(1000, 1e-6 * system_rhs.l2_norm());
+  SolverControl            solver_control(5000, 1e-6 * system_rhs.l2_norm());
   SolverGMRES<Vector<double>> solver(solver_control);
 
   PreconditionJacobi<SparseMatrix<double>> preconditioner;
