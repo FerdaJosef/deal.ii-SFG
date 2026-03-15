@@ -100,7 +100,7 @@ double RightHandSide::value(const Point<3> &p,
       return std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
 
   else
-    return 0.0;
+    return 0.;
 
 }
 
