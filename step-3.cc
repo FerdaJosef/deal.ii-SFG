@@ -35,6 +35,7 @@
 #include <deal.II/lac/sparse_matrix.h>
 #include <deal.II/lac/dynamic_sparsity_pattern.h>
 #include <deal.II/lac/solver_gmres.h>
+#include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/precondition.h>
 
 #include <deal.II/fe/fe_system.h>
@@ -62,8 +63,111 @@
 #include <deal.II/numerics/error_estimator.h>
 #include <deal.II/lac/solver_gmres.h>
 
-using namespace dealii;
+#include <deal.II/base/work_stream.h>
+#include <deal.II/base/multithread_info.h>
 
+#include <random>
+
+using namespace dealii;
+class Step3
+{
+public:
+  Step3();
+
+  void run();
+
+
+private:
+  void make_grid();
+  void setup_system();
+
+struct AssemblyScratchData
+{
+  AssemblyScratchData(const FiniteElement<3> &fe);
+  AssemblyScratchData(const AssemblyScratchData &scratch_data);
+
+  FEValues<3> fe_values;
+
+  std::vector<double> rhs_values;
+
+  std::vector<Vector<double>> values_newton;
+  std::vector<Vector<double>> values_old;
+
+  std::vector<std::vector<Tensor<1,3>>> gradients_newton;
+
+  std::vector<double> acegen_scratch;
+};
+ 
+  struct AssemblyCopyData
+  {
+    FullMatrix<double>                   cell_matrix;
+    Vector<double>                       cell_rhs;
+    std::vector<types::global_dof_index> local_dof_indices;
+  };
+  
+  void assemble_system();
+
+  void local_assemble_system(
+      const typename DoFHandler<3>::active_cell_iterator &cell,
+      AssemblyScratchData                                  &scratch,
+      AssemblyCopyData                                     &copy_data);
+  void copy_local_to_global(const AssemblyCopyData &copy_data);
+
+  void solve();
+  void time_step_update();
+  double determine_step_length() const;
+  void output_results() const;
+  void generate_rhs();
+  double compute_residual();
+
+  Triangulation<3> triangulation;
+  const FESystem<3>    fe;
+  DoFHandler<3>    dof_handler;
+
+  AffineConstraints<double> zero_constraints;
+  AffineConstraints<double> nonzero_constraints;
+
+  SparsityPattern      sparsity_pattern;
+  SparseMatrix<double> system_matrix;
+
+  Vector<double> oldsolution;
+  Vector<double> newton_iterate;
+  Vector<double> solution;
+  Vector<double> system_rhs;
+
+  const unsigned int n_q_points;
+  std::vector<std::vector<Tensor<1,2>>> rhs_values;
+
+  double time;
+  double final_time;
+  double delta_t;
+  unsigned int timestep_number;
+
+  int max_it;
+  double max_multiplier;
+  double min_multiplier;
+  int optimal_it;
+  double dt_max; double dt_min;
+  int newton_iteration;
+};
+
+
+Step3::Step3()
+  : fe(FE_Q<3>(1), 2)
+  , dof_handler(triangulation)
+  , n_q_points(QGauss<3>(fe.degree + 1).size())
+  , time(0.0)
+  , final_time(10.0)
+  , delta_t(1e-5)
+  , timestep_number(0)
+  , max_it(10)
+  , max_multiplier(1.6)
+  , min_multiplier(0.5)
+  , optimal_it(6)
+  , dt_max(2.0)
+  , dt_min(1e-7)
+  , newton_iteration(0)
+{}
 class RightHandSide : public Function<3>
 {
 public:
@@ -84,14 +188,15 @@ public:
 double RightHandSide::value(const Point<3> &p,
                                  const unsigned int component) const
 {
-    const double t = this->get_time();
+    (void)p;
+    (void)component;
+    //const double t = this->get_time();
 
-    std::random_device rd{};
-    std::mt19937 gen{rd()};
-    std::normal_distribution<double> d{0.5, 0.05};
+    static std::mt19937 gen(std::random_device{}());
+    static std::normal_distribution<double> dist(0.0,1.0);
 
-    double sample;
-    sample = d(gen);
+    //double sample;
+    //sample = d(gen);
 
     if (component == 0)
       return std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
@@ -100,153 +205,51 @@ double RightHandSide::value(const Point<3> &p,
       return std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
 
   else
-    return 0.;
+    return 0.0;
 
 }
 
-class BoundaryValues : public Function<3>
-{
-public:
-  BoundaryValues();
-
-  virtual double value(const Point<3>  &p,
-                        const unsigned int component = 0) const override;
-};
-
-BoundaryValues::BoundaryValues()
-  : Function<3>(2)
-{}
-
-double BoundaryValues::value(const Point<3> &p,
-                                  const unsigned int) const
-{
-  return 0.0;
-}
-/*
 class ExactSolution : public Function<3>
 {
   public:
-  ExactSolution(double time = 0.0)
-  : Function<3>(2, time)
+  ExactSolution(const unsigned int n_components = 2, const double time = 0.)
+  : Function<3>(n_components, time)
   {}
-
+  
   virtual double value(const Point<3> &p,
-                      const unsigned int component) const override
+                      const unsigned int component = 2) const override
   {
-    const double t = this->get_time();
+    (void)p;
+    (void)component;
 
-    std::random_device rd{};
-    std::mt19937 gen{rd()};
-    std::normal_distribution<double> d{0.5, 0.05};
+    //const double t = this->get_time();
+
+    static std::mt19937 gen(std::random_device{}());
+    static std::normal_distribution<double> dist(0.0, 1.0);
 
     double sample;
-    sample = d(gen);
+    sample = dist(gen)*0.0;
     return sample;
-
   }
 };
 
-void right_hand_side(const std::vector<Point<3>> &points,
-                     std::vector<Tensor<1,2>> &values)
+void Step3::generate_rhs()
 {
-  for (unsigned int q=0; q<points.size(); ++q)
-  {
-    const double x = points[q][0];
-    const double y = points[q][1];
-
-    double u = std::sin(M_PI*x)*std::sin(M_PI*y);
-    double v = std::cos(M_PI*x)*std::sin(M_PI*y);
-
-    values[q][0] =
-        2*M_PI*M_PI*u
-        + u*u*u
-        + v;
-
-    values[q][1] =
-        2*M_PI*M_PI*v
-        + v*v*v
-        + u;
-  }
-}
-*/
-class Step3
-{
-public:
-  Step3();
-
-  void run();
-
-
-private:
-  void make_grid();
-  void setup_system();
-  void assemble_system();
-  void solve();
-  void time_step_update();
-  double determine_step_length() const;
-  void output_results() const;
-  void generate_rhs(const unsigned int x_q_ps);
-  double compute_residual();
-
-  Triangulation<3> triangulation;
-  const FESystem<3>    fe;
-  DoFHandler<3>    dof_handler;
-
-  AffineConstraints<double> zero_constraints;
-  AffineConstraints<double> nonzero_constraints;
-
-  SparsityPattern      sparsity_pattern;
-  SparseMatrix<double> system_matrix;
-
-  Vector<double> oldsolution;
-  Vector<double> newton_iterate;
-  Vector<double> solution;
-  Vector<double> system_rhs;
-
-  std::vector<Tensor<1,2>> rhs_values;
-
-  double time;
-  double final_time;
-  double delta_t;
-  unsigned int timestep_number;
-
-  int max_it;
-  double max_multiplier;
-  double min_multiplier;
-  int optimal_it;
-  double dt_max; double dt_min;
-  int newton_iteration;
-
-};
-
-
-Step3::Step3()
-  : fe(FE_Q<3>(1), 2)
-  , dof_handler(triangulation)
-  , time(0.0)
-  , final_time(0.01)
-  , delta_t(0.001)
-  , timestep_number(0)
-  , max_it(10)
-  , max_multiplier(1.6)
-  , min_multiplier(0.5)
-  , optimal_it(6)
-  , dt_max(0.2)
-  , dt_min(1e-6)
-  , newton_iteration(0)
-{}
-
-void Step3::generate_rhs(const unsigned int n_q_points)
-{
-  rhs_values.resize(n_q_points);
-
   static std::mt19937 gen(std::random_device{}());
-  static std::normal_distribution<double> dist(0.0, 1.0);
+  static std::normal_distribution<double> dist(0.0,1.0);
 
-  for (unsigned int q = 0; q < n_q_points; ++q)
+  for (const auto &cell : dof_handler.active_cell_iterators())
   {
-    rhs_values[q][0] = 1e-6*dist(gen);
-    rhs_values[q][1] = 1e-6*dist(gen);
+    const unsigned int cell_id = cell->active_cell_index();
+
+    for (unsigned int q=0; q<n_q_points; ++q)
+    {
+      rhs_values[cell_id][q][0] =
+          1e-6*dist(gen)/std::sqrt(delta_t);
+
+      rhs_values[cell_id][q][1] =
+          1e-6*dist(gen)/std::sqrt(delta_t);
+    }
   }
 }
 
@@ -254,7 +257,7 @@ void Step3::make_grid()
 {
   GridGenerator::hyper_cube(triangulation, -10, 10, true);
   triangulation.refine_global(
-    3
+    6
   );
 
   std::cout << "Number of active cells: " << triangulation.n_active_cells()
@@ -271,7 +274,7 @@ void Step3::setup_system()
   VectorTools::interpolate_boundary_values(dof_handler,
                                             0,
                                             Functions::ZeroFunction<3>(2),
-                                            nonzero_constraints);
+                                            zero_constraints);
   zero_constraints.close();
 
   nonzero_constraints.clear();
@@ -292,42 +295,78 @@ void Step3::setup_system()
   system_rhs.reinit(dof_handler.n_dofs());
   oldsolution.reinit(dof_handler.n_dofs());
   newton_iterate.reinit(dof_handler.n_dofs());
+
+  rhs_values.resize(triangulation.n_active_cells(),
+                  std::vector<Tensor<1,2>>(n_q_points));
 }
 
+Step3::AssemblyScratchData::AssemblyScratchData(const FiniteElement<3> &fe)
+  :
+  fe_values(fe,
+            QGauss<3>(fe.degree + 1),
+            update_values |
+            update_gradients |
+            update_quadrature_points |
+            update_JxW_values)
+{
+  const unsigned int n_q_points =
+      fe_values.get_quadrature().size();
 
+  values_newton.resize(n_q_points, Vector<double>(2));
+  values_old.resize(n_q_points, Vector<double>(2));
+
+  gradients_newton.resize(n_q_points,
+                          std::vector<Tensor<1,3>>(2));
+
+  acegen_scratch.resize(256);
+}
+
+Step3::AssemblyScratchData::AssemblyScratchData(
+    const AssemblyScratchData &scratch_data)
+    : fe_values(scratch_data.fe_values.get_fe(),
+                scratch_data.fe_values.get_quadrature(),
+                update_values | update_gradients | update_quadrature_points |
+                update_JxW_values)
+    , rhs_values(scratch_data.rhs_values.size())
+    , values_newton(scratch_data.values_newton)
+    , values_old(scratch_data.values_old)
+    , gradients_newton(scratch_data.gradients_newton)
+    , acegen_scratch(scratch_data.acegen_scratch)
+  {}
 
 void Step3::assemble_system()
 {
-
   system_matrix = 0;
-  system_rhs    = 0;
+  system_rhs = 0;
 
+  WorkStream::run(dof_handler.begin_active(),
+                  dof_handler.end(),
+                  *this,
+                  &Step3::local_assemble_system,
+                  &Step3::copy_local_to_global,
+                  AssemblyScratchData(fe),
+                  AssemblyCopyData());
+}
+
+void Step3::local_assemble_system(
+        const typename DoFHandler<3>::active_cell_iterator &cell,
+        AssemblyScratchData                                  &scratch_data,
+        AssemblyCopyData                                     &copy_data)
+{
   const QGauss<3> quadrature_formula(fe.degree + 1);
-  FEValues<3> fe_values(fe,
-                        quadrature_formula,
-                        update_values | update_gradients| update_quadrature_points | update_JxW_values);
 
   const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
-  const unsigned int n_q_points    = quadrature_formula.size();
+  //n_q_points    = quadrature_formula.size();
 
-  FullMatrix<double> cell_matrix(dofs_per_cell, dofs_per_cell);
-  Vector<double>     cell_rhs(dofs_per_cell);
+  copy_data.cell_matrix.reinit(dofs_per_cell, dofs_per_cell);
+  copy_data.cell_rhs.reinit(dofs_per_cell);
 
-  std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+  copy_data.local_dof_indices.resize(dofs_per_cell);
+ 
+  scratch_data.fe_values.reinit(cell);
 
-  RightHandSide rhs_function;
-  rhs_function.set_time(this->time);
 
  const unsigned int dim=3;
-  //======= ACEGEN input
-  std::vector<Vector<double>> values_newton(n_q_points, Vector<double>(2));
-
-  std::vector<Vector<double>> values_old(n_q_points, Vector<double>(2));
-
-  std::vector<std::vector<Tensor<1, dim>>> gradients_newton(n_q_points, std::vector<Tensor<1, dim>>(2));
-// USING 
-  std::vector<double> acegen_scratch(256);
-
 
   //Acegen OUTPUT
   //RESIDUAL
@@ -353,90 +392,98 @@ void Step3::assemble_system()
           std::vector<Tensor<2,dim>>(2)));
   //======= ACEGEN=======
 
+  //RightHandSide rhs_function;
+  //rhs_function.set_time(this->time);
 
+  scratch_data.fe_values.reinit(cell);
 
-  for (const auto &cell : dof_handler.active_cell_iterators())
+  copy_data.cell_matrix = 0;
+  copy_data.cell_rhs    = 0;
+
+  scratch_data.fe_values.get_function_gradients(solution, scratch_data.gradients_newton);
+  scratch_data.fe_values.get_function_values(oldsolution, scratch_data.values_old);
+  scratch_data.fe_values.get_function_values(solution, scratch_data.values_newton);
+
+  const unsigned int cell_id = cell->active_cell_index();
+
+  //right_hand_side(fe_values.get_quadrature_points(), rhs_values);
+
+  for (const unsigned int q_index : scratch_data.fe_values.quadrature_point_indices())
     {
-      fe_values.reinit(cell);
+    //const auto &x_q = fe_values.quadrature_point(q_index);
 
-      cell_matrix = 0;
-      cell_rhs    = 0;
+    equation(scratch_data.acegen_scratch,
+            scratch_data.values_newton[q_index],
+            scratch_data.values_old[q_index],
+        scratch_data.gradients_newton[q_index],
+        dPsiDu[q_index],
+        dPsidGradU[q_index],
+        dPsiDu2[q_index],
+        dPsidUdGradU[q_index],
+        dPsidGradU2[q_index], // 2, 2, 3, 3
+        &this->delta_t 
+      );
 
-      fe_values.get_function_gradients(solution, gradients_newton);
-      fe_values.get_function_values(oldsolution, values_old);
-      fe_values.get_function_values(solution, values_newton);
-
-      //right_hand_side(fe_values.get_quadrature_points(), rhs_values);
-
-      for (const unsigned int q_index : fe_values.quadrature_point_indices())
+      const auto &sd = scratch_data;
+      for (const unsigned int i : scratch_data.fe_values.dof_indices())
         {
-        const auto &x_q = fe_values.quadrature_point(q_index);
+        const unsigned int component_i = fe.system_to_component_index(i).first;
+        
+        // number of degrees of freedom is equql to number "geometric dof" = support points
+        // function fe.system_to_component_index(i) returns a pair:
+        // first is the corresponding component of vector system
+        // second is the index of support point
+        // shape value known about it through index i
+        // ted tim vzdycky zredukuju dimenzi objektu a prevedu to na skalarni pripad
 
-        equation(acegen_scratch,
-                values_newton[q_index],
-                values_old[q_index],
-            gradients_newton[q_index],
-            dPsiDu[q_index],
-            dPsidGradU[q_index],
-            dPsiDu2[q_index],
-            dPsidUdGradU[q_index],
-            dPsidGradU2[q_index], // 2, 2, 3, 3
-            &this->delta_t 
-          );
+          copy_data.cell_rhs(i) -= (sd.fe_values.shape_value(i, q_index) * 
+                          dPsiDu[q_index][component_i]
 
-          for (const unsigned int i : fe_values.dof_indices())
-            {
-            const unsigned int component_i = fe.system_to_component_index(i).first;
-            
-            // number of degrees of freedom is equql to number "geometric dof" = support points
-            // function fe.system_to_component_index(i) returns a pair:
-            // first is the corresponding component of vector system
-            // second is the index of support point
-            // shape value known about it through index i
-            // ted tim vzdycky zredukuju dimenzi objektu a prevedu to na skalarni pripad
-
-              cell_rhs(i) -= (fe_values.shape_value(i, q_index) * 
-                              dPsiDu[q_index][component_i]
-
-                          + fe_values.shape_grad(i, q_index) * dPsidGradU[q_index][component_i]
-                             - fe_values.shape_value(i,q_index) * rhs_values[q_index][component_i]) *
-                              fe_values.JxW(q_index);
-              }
-          for (const unsigned int i : fe_values.dof_indices())
-          {
-            const unsigned int component_i = fe.system_to_component_index(i).first;
-            
-              for (const unsigned int j : fe_values.dof_indices())
-              {
-                const unsigned int component_j = fe.system_to_component_index(j).first;
-
-                cell_matrix(i, j) +=
-                    (fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
-                        dPsidGradU2[q_index][component_i][component_j] *           // dPsi/d2(grad u)
-                    fe_values.shape_grad(j, q_index)    // grad phi_j(x_q)
-                    + 
-                    fe_values.shape_value(i, q_index) * // phi_i(x_q)
-                        dPsiDu2[q_index][component_i][component_j] *           // dPsi/d2( u)
-                    fe_values.shape_value(j, q_index)     // phi_j(x_q)
-                    +
-                    fe_values.shape_value(i, q_index) * //  phi_i(x_q)
-                        dPsidUdGradU[q_index][component_i][component_j] *           // dPsi/d(grad u)du
-                    fe_values.shape_grad(j, q_index)     // grad phi_j(x_q)
-                    +
-                    fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
-                        dPsidUdGradU[q_index][component_i][component_j] *           // dPsi/d(grad u)du
-                    fe_values.shape_value(j, q_index)     // phi_j(x_q)
-                    ) *
-                    fe_values.JxW(q_index);           // dx
-            }
+                      + sd.fe_values.shape_grad(i, q_index) * dPsidGradU[q_index][component_i]
+                          + sd.fe_values.shape_value(i,q_index) * rhs_values[cell_id][q_index][component_i]) *
+                          sd.fe_values.JxW(q_index);
           }
-        }
-      cell->get_dof_indices(local_dof_indices);
+      for (const unsigned int i : scratch_data.fe_values.dof_indices())
+      {
+        const unsigned int component_i = fe.system_to_component_index(i).first;
+        
+          for (const unsigned int j : scratch_data.fe_values.dof_indices())
+          {
+            const unsigned int component_j = fe.system_to_component_index(j).first;
 
-      // Apply boundary conditions consistently using constraint object
-      zero_constraints.distribute_local_to_global(cell_matrix, cell_rhs, local_dof_indices, system_matrix, system_rhs);
+            copy_data.cell_matrix(i, j) +=
+                (sd.fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
+                    dPsidGradU2[q_index][component_i][component_j] *           // dPsi/d2(grad u)
+                sd.fe_values.shape_grad(j, q_index)    // grad phi_j(x_q)
+                + 
+                sd.fe_values.shape_value(i, q_index) * // phi_i(x_q)
+                    dPsiDu2[q_index][component_i][component_j] *           // dPsi/d2( u)
+                sd.fe_values.shape_value(j, q_index)     // phi_j(x_q)
+                +
+                sd.fe_values.shape_value(i, q_index) * //  phi_i(x_q)
+                    dPsidUdGradU[q_index][component_i][component_j] *           // dPsi/d(grad u)du
+                sd.fe_values.shape_grad(j, q_index)     // grad phi_j(x_q)
+                +
+                sd.fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
+                    dPsidUdGradU[q_index][component_i][component_j] *           // dPsi/d(grad u)du
+                sd.fe_values.shape_value(j, q_index)     // phi_j(x_q)
+                ) *
+                sd.fe_values.JxW(q_index);           // dx
+        }
+      }
     }
+  cell->get_dof_indices(copy_data.local_dof_indices);
 }
+
+void Step3::copy_local_to_global(const AssemblyCopyData &copy_data)
+  {
+    nonzero_constraints.distribute_local_to_global(
+      copy_data.cell_matrix,
+      copy_data.cell_rhs,
+      copy_data.local_dof_indices,
+      system_matrix,
+      system_rhs);
+  }
 
 double Step3::determine_step_length() const
 {
@@ -445,15 +492,15 @@ double Step3::determine_step_length() const
 
 void Step3::solve()
 {
-  SolverControl            solver_control(5000, 1e-9 * system_rhs.l2_norm());
-  SolverGMRES<Vector<double>> solver(solver_control);
+  SolverControl            solver_control(5000, 1e-6 * system_rhs.l2_norm());
+  SolverCG<Vector<double>> solver(solver_control);
 
   PreconditionJacobi<SparseMatrix<double>> preconditioner;
   preconditioner.initialize(system_matrix, 1.0);
 
   solver.solve(system_matrix, newton_iterate, system_rhs, preconditioner);
 
-  zero_constraints.distribute(newton_iterate);
+  nonzero_constraints.distribute(newton_iterate);
 
   const double alpha = determine_step_length();
 
@@ -511,10 +558,19 @@ void Step3::output_results() const
 
 void Step3::run()
 {
+
   make_grid();
   setup_system();
 
+  std::cout << n_q_points << std::endl;
+
   solution = 0.0;
+
+  VectorTools::project(dof_handler,
+                      nonzero_constraints,
+                      QGauss<3>(fe.degree + 1),
+                      ExactSolution(2, 0.0),
+                      solution);
 
   nonzero_constraints.distribute(solution);
 
@@ -528,7 +584,11 @@ void Step3::run()
     time+=delta_t;
     timestep_number++;
 
-    generate_rhs(QGauss<3>(fe.degree + 1).size());
+    generate_rhs();
+
+    std::cout << rhs_values[0][0][0] << std::endl;
+    std::cout << rhs_values[1][0][0] << std::endl;
+    std::cout << rhs_values[2][0][0] << std::endl;
 
     std::cout<< "Time: " << time << std::endl;
     oldsolution = solution;
@@ -567,14 +627,47 @@ void Step3::run()
     time_step_update();
     output_results();
   }
+
+  std::cout << solution.linfty_norm() << std::endl;
 }
 
 
 
 int main()
 {
-  Step3 laplace_problem;
-  laplace_problem.run();
+    using namespace dealii;
+    try
+      {
+        MultithreadInfo::set_thread_limit();
+  
+        Step3 double_ditch;
+        double_ditch.run();
+      }
+    catch (std::exception &exc)
+      {
+        std::cerr << std::endl
+                  << std::endl
+                  << "----------------------------------------------------"
+                  << std::endl;
+        std::cerr << "Exception on processing: " << std::endl
+                  << exc.what() << std::endl
+                  << "Aborting!" << std::endl
+                  << "----------------------------------------------------"
+                  << std::endl;
+        return 1;
+      }
+    catch (...)
+      {
+        std::cerr << std::endl
+                  << std::endl
+                  << "----------------------------------------------------"
+                  << std::endl;
+        std::cerr << "Unknown exception!" << std::endl
+                  << "Aborting!" << std::endl
+                  << "----------------------------------------------------"
+                  << std::endl;
+        return 1;
+      }
 
   return 0;
 }
