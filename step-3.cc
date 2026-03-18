@@ -61,6 +61,11 @@
 #include <deal.II/numerics/error_estimator.h>
 #include <deal.II/lac/solver_gmres.h>
 
+#include <deal.II/base/work_stream.h>
+#include <deal.II/base/multithread_info.h>
+
+#include <random>
+
 using namespace dealii;
 
 class BoundaryValues : public Function<3>
@@ -112,6 +117,14 @@ private:
   Vector<double> solution;
   Vector<double> system_rhs;
 
+  const unsigned int n_q_points;
+  std::vector<std::vector<Tensor<1,2>>> rhs_values;
+
+  double time;
+  double final_time;
+  double delta_t;
+  unsigned int timestep_number;
+
   int max_it;
   double max_multiplier;
   double min_multiplier;
@@ -128,6 +141,90 @@ Step3::Step3()
   , optimal_it(6)
   , newton_iteration(0)
 {}
+class RightHandSide : public Function<3>
+{
+public:
+  RightHandSide(double time = 0.0)
+    : Function(2, time)
+    , period(0.2)
+  {}
+
+  virtual double value(const Point<3>  &p,
+                       const unsigned int component) const override;
+  
+  private:
+    const double period;
+};
+
+
+
+double RightHandSide::value(const Point<3> &p,
+                                 const unsigned int component) const
+{
+    (void)p;
+    (void)component;
+    //const double t = this->get_time();
+
+    static std::mt19937 gen(std::random_device{}());
+    static std::normal_distribution<double> dist(0.0,1.0);
+
+    //double sample;
+    //sample = d(gen);
+
+    if (component == 0)
+      return std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
+
+    else if (component == 1)
+      return std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
+
+  else
+    return 0.0;
+
+}
+
+class ExactSolution : public Function<3>
+{
+  public:
+  ExactSolution(const unsigned int n_components = 2, const double time = 0.)
+  : Function<3>(n_components, time)
+  {}
+  
+  virtual double value(const Point<3> &p,
+                      const unsigned int component = 2) const override
+  {
+    (void)p;
+    (void)component;
+
+    //const double t = this->get_time();
+
+    static std::mt19937 gen(std::random_device{}());
+    static std::normal_distribution<double> dist(0.0, 1.0);
+
+    double sample;
+    sample = dist(gen)*0.0;
+    return sample;
+  }
+};
+
+void Step3::generate_rhs()
+{
+  static std::mt19937 gen(std::random_device{}());
+  static std::normal_distribution<double> dist(0.0,1.0);
+
+  for (const auto &cell : dof_handler.active_cell_iterators())
+  {
+    const unsigned int cell_id = cell->active_cell_index();
+
+    for (unsigned int q=0; q<n_q_points; ++q)
+    {
+      rhs_values[cell_id][q][0] =
+          1e-6*dist(gen)/std::sqrt(delta_t);
+
+      rhs_values[cell_id][q][1] =
+          1e-6*dist(gen)/std::sqrt(delta_t);
+    }
+  }
+}
 
 void Step3::make_grid()
 {
