@@ -158,7 +158,7 @@ Step3<n>::Step3()
   , n_q_points(QGauss<3>(fe.degree + 1).size())
   , time(0.0)
   , final_time(5.0)
-  , delta_t(1e-5)
+  , delta_t(1e-2)
   , timestep_number(0)
   , max_it(10)
   , max_multiplier(1.6)
@@ -191,19 +191,14 @@ double RightHandSide<n>::value(const Point<3> &p, const unsigned int component) 
 {
     (void)p;
     (void)component;
-    //const double t = this->get_time();
 
-    static std::mt19937 gen(std::random_device{}());
-    static std::normal_distribution<double> dist(0.0,1.0);
-
-    //double sample;
-    //sample = d(gen);
+    double u = std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
 
     if (component == 0)
-      return std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
+      return u + 3*M_PI*M_PI * u*(1+this->get_time()) + 10 * pow(u*(1+this->get_time()),3);
 
     else if (component == 1)
-      return std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
+      return u + 3*M_PI*M_PI * u*(1+this->get_time()) + 10 * pow(u*(1+this->get_time()),3);
 
   else
     return 0.0;
@@ -226,12 +221,9 @@ class ExactSolution : public Function<3>
 
     //const double t = this->get_time();
 
-    static std::mt19937 gen(std::random_device{}());
-    static std::normal_distribution<double> dist(0.0, 1.0);
+    double u = std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
 
-    double sample;
-    sample = dist(gen)*0.0;
-    return sample;
+    return u*(1+this->get_time());
   }
 };
 
@@ -259,9 +251,9 @@ void Step3<n>::generate_rhs()
 template <int n>
 void Step3<n>::make_grid()
 {
-  GridGenerator::hyper_cube(triangulation, -10, 10, true);
+  GridGenerator::hyper_cube(triangulation, -1, 1, true);
   triangulation.refine_global(
-    4
+    3
   );
 
   std::cout << "Number of active cells: " << triangulation.n_active_cells()
@@ -276,10 +268,14 @@ void Step3<n>::setup_system()
             << std::endl;
 
   zero_constraints.clear();
-  VectorTools::interpolate_boundary_values(dof_handler,
-                                            0,
-                                            Functions::ZeroFunction<3>(n),
-                                            zero_constraints);
+  for (int i = 0; i < 6; i++)
+  {
+    VectorTools::interpolate_boundary_values(dof_handler,
+                                                i,
+                                                Functions::ZeroFunction<3>(n),
+                                                zero_constraints);
+  }
+
   zero_constraints.close();
 
   nonzero_constraints.clear();
@@ -291,7 +287,7 @@ void Step3<n>::setup_system()
   nonzero_constraints.close();
 
   DynamicSparsityPattern dsp(dof_handler.n_dofs());
-  DoFTools::make_sparsity_pattern(dof_handler, dsp, nonzero_constraints, true);
+  DoFTools::make_sparsity_pattern(dof_handler, dsp, zero_constraints, true);
   sparsity_pattern.copy_from(dsp);
 
   system_matrix.reinit(sparsity_pattern);
@@ -400,8 +396,8 @@ void Step3<n>::local_assemble_system(
           std::vector<Tensor<2,dim>>(n)));
   //======= ACEGEN=======
 
-  //RightHandSide rhs_function;
-  //rhs_function.set_time(this->time);
+  RightHandSide<n> rhs_function;
+  rhs_function.set_time(this->time);
 
   scratch_data.fe_values.reinit(cell);
 
@@ -418,7 +414,7 @@ void Step3<n>::local_assemble_system(
 
   for (const unsigned int q_index : scratch_data.fe_values.quadrature_point_indices())
     {
-    //const auto &x_q = fe_values.quadrature_point(q_index);
+    const auto &x_q = scratch_data.fe_values.quadrature_point(q_index);
 
     equation(scratch_data.acegen_scratch,
             scratch_data.values_newton[q_index],
@@ -448,7 +444,7 @@ void Step3<n>::local_assemble_system(
                           dPsiDu[q_index][component_i]
 
                       + sd.fe_values.shape_grad(i, q_index) * dPsidGradU[q_index][component_i]
-                          + sd.fe_values.shape_value(i,q_index) * rhs_values[cell_id][q_index][component_i]) *
+                          - sd.fe_values.shape_value(i,q_index) * rhs_function.value(x_q, component_i)) *
                           sd.fe_values.JxW(q_index);
           }
       for (const unsigned int i : scratch_data.fe_values.dof_indices())
@@ -486,7 +482,7 @@ void Step3<n>::local_assemble_system(
 template <int n>
 void Step3<n>::copy_local_to_global(const AssemblyCopyData &copy_data)
   {
-    nonzero_constraints.distribute_local_to_global(
+    zero_constraints.distribute_local_to_global(
       copy_data.cell_matrix,
       copy_data.cell_rhs,
       copy_data.local_dof_indices,
@@ -511,13 +507,13 @@ void Step3<n>::solve()
 
   solver.solve(system_matrix, newton_iterate, system_rhs, preconditioner);
 
-  nonzero_constraints.distribute(newton_iterate);
+  zero_constraints.distribute(newton_iterate);
 
   const double alpha = determine_step_length();
 
   solution.add(alpha, newton_iterate);
 
-  nonzero_constraints.distribute(solution);
+  zero_constraints.distribute(solution);
 
   std::cout << solver_control.last_step()
             << " iterations needed to obtain convergence." << std::endl;
@@ -567,6 +563,25 @@ void Step3<n>::output_results() const
   DataOutBase::write_pvd_record(pvd_output, times_and_names);
 }
 
+template <int n>
+double Step3<n>::compute_residual()
+{
+    ExactSolution<n> exact_solution;
+    exact_solution.set_time(time);
+
+    Vector<float> difference_per_cell(triangulation.n_active_cells());
+    VectorTools::integrate_difference(dof_handler,
+                                        solution,
+                                        exact_solution,
+                                        difference_per_cell,
+                                        QGauss<3>(fe.degree + 1),
+                                        VectorTools::L2_norm);
+    const double L2_error =
+    VectorTools::compute_global_error(triangulation,
+                                        difference_per_cell,
+                                        VectorTools::L2_norm);
+    return L2_error;
+}
 
 template <int n>
 void Step3<n>::run()
@@ -577,13 +592,16 @@ void Step3<n>::run()
 
   std::cout << n_q_points << std::endl;
 
+ExactSolution<n> exact_solution0;
+exact_solution0.set_time(time);
+
   VectorTools::project(dof_handler,
-                      nonzero_constraints,
+                      zero_constraints,
                       QGauss<3>(fe.degree + 1),
-                      ExactSolution<n>(0.0),
+                      exact_solution0,
                       solution);
 
-  nonzero_constraints.distribute(solution);
+  zero_constraints.distribute(solution);
 
   //std::cout << "The difference is " << L2_error << std::endl;
 
@@ -630,7 +648,8 @@ void Step3<n>::run()
         continue;
     }
 
-    std::cout << newton_iteration << std::endl;
+    std::cout << "Chyba: " << compute_residual() << std::endl;
+
     time_step_update();
     output_results();
   }
@@ -645,7 +664,7 @@ int main()
     using namespace dealii;
     try
       {
-        MultithreadInfo::set_thread_limit();
+        MultithreadInfo::set_thread_limit(8);
   
         Step3<2> double_ditch;
         double_ditch.run();
