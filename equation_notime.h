@@ -16,28 +16,25 @@ using namespace dealii;
 
 void equation(std::vector<double> &v,
     Vector<double> &U,
-    Vector<double> &U0,
     std::vector<Tensor<1,3>> &GradU,
     Vector<double> &dPsiDu, 
     std::vector<Tensor<1,3>> &dPsidGradU,
     FullMatrix<double> &dPsiDu2,
     std::vector<std::vector<Tensor<1,3>>> &dPsidUdGradU, 
-    std::vector<std::vector<Tensor<2,3>>> &dPsidGradU2,
-    double (*dt))
+    std::vector<std::vector<Tensor<2,3>>> &dPsidGradU2)
 {
-v[21]=(*dt);
-dPsiDu[0]=(U[0]-U0[0])/v[21];
-dPsiDu[1]=(-U0[1]+U[1])/v[21];
+dPsiDu[0]=0e0;
+dPsiDu[1]=0e0;
 dPsidGradU[0][0]=GradU[0][0];
 dPsidGradU[0][1]=GradU[0][1];
 dPsidGradU[0][2]=GradU[0][2];
 dPsidGradU[1][0]=2e0*GradU[1][0];
 dPsidGradU[1][1]=2e0*GradU[1][1];
 dPsidGradU[1][2]=2e0*GradU[1][2];
-dPsiDu2[0][0]=1e0/v[21];
+dPsiDu2[0][0]=0e0;
 dPsiDu2[0][1]=0e0;
 dPsiDu2[1][0]=0e0;
-dPsiDu2[1][1]=1e0/v[21];
+dPsiDu2[1][1]=0e0;
 dPsidUdGradU[0][0][0]=0e0;
 dPsidUdGradU[0][0][1]=0e0;
 dPsidUdGradU[0][0][2]=0e0;

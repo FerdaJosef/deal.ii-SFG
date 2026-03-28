@@ -114,12 +114,10 @@ struct AssemblyScratchData
   void copy_local_to_global(const AssemblyCopyData &copy_data);
 
   void solve();
-  void time_step_update();
   double determine_step_length() const;
   void output_results() const;
   void generate_rhs();
   double compute_residual();
-  double compute_energy();
 
   Triangulation<3> triangulation;
   const FESystem<3>    fe;
@@ -139,16 +137,10 @@ struct AssemblyScratchData
   const unsigned int n_q_points;
   std::vector<std::vector<Tensor<1,n>>> rhs_values;
 
-  double time;
-  double final_time;
-  double delta_t;
-  unsigned int timestep_number;
-
   int max_it;
   double max_multiplier;
   double min_multiplier;
   int optimal_it;
-  double dt_max; double dt_min;
   int newton_iteration;
 };
 
@@ -157,16 +149,10 @@ Step3<n>::Step3()
   : fe(FE_Q<3>(1), n)
   , dof_handler(triangulation)
   , n_q_points(QGauss<3>(fe.degree + 1).size())
-  , time(0.0)
-  , final_time(0.5)
-  , delta_t(5e-2)
-  , timestep_number(0)
   , max_it(10)
   , max_multiplier(1.6)
   , min_multiplier(0.5)
   , optimal_it(5)
-  , dt_max(0.002)
-  , dt_min(1e-7)
   , newton_iteration(0)
 {}
 
@@ -174,17 +160,12 @@ template <int n>
 class RightHandSide : public Function<3>
 {
 public:
-  RightHandSide(double time = 0.0, double dt = 0.0)
-    : Function<3>(n, time), dt(dt)
+  RightHandSide()
+    : Function<3>(n)
   {}
 
   virtual double value(const Point<3> &p,
                        const unsigned int component = 0) const override;
-
-  void set_dt(double new_dt) { dt = new_dt; }
-
-private:
-  double dt;
 };
 
 
@@ -192,27 +173,24 @@ template <int n>
 double RightHandSide<n>::value(const Point<3> &p,
                                const unsigned int component) const
 {
-    double t = this->get_time();
 
-    double u = std::sin(M_PI*p[0]) *
-               std::sin(M_PI*p[1]) *
-               std::sin(M_PI*p[2]);
+    double u1 = std::sin(M_PI*p[0]) *
+                std::sin(M_PI*p[1]) *
+                std::sin(M_PI*p[2]);
 
-    double u1_n   = u * std::sin(t);
-    double u1_np1 = u * std::sin(t - dt);
-
-    double u2_n   = u * std::cos(2*t);
-    double u2_np1 = u * std::cos(2*(t - dt));
+    double u2 = std::sin(M_PI*p[0]) *
+                std::sin(M_PI*p[1]) *
+                std::sin(M_PI*p[2]);
 
     if (component == 0)
     {
-        return (u1_n - u1_np1)/dt
-             + 3*M_PI*M_PI * u1_n;
+        return 
+             3*M_PI*M_PI * u1;
     }
     else if (component == 1)
     {
-        return (u2_n - u2_np1)/dt
-             + 6*M_PI*M_PI * u2_n;
+        return
+             6*M_PI*M_PI * u2;
     }
 
     return 0.0;
@@ -222,8 +200,8 @@ template <int n>
 class ExactSolution : public Function<3>
 {
   public:
-  ExactSolution(const double time = 0.)
-  : Function<3>(n, time)
+  ExactSolution()
+  : Function<3>(n)
   {}
   
   virtual double value(const Point<3> &p,
@@ -232,46 +210,27 @@ class ExactSolution : public Function<3>
     (void)p;
     (void)component;
 
-    double u = std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
+    double u1 = std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
+    double u2 = std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
 
     if (component == 0) {
-      return u*std::sin(this->get_time());
+      return u1;
     }
     else if (component == 1) {
-      return u*std::cos(2*(this->get_time()));
+      return u2;
     }
 
     return 0.0;
   }
 };
 
-template <int n>
-void Step3<n>::generate_rhs()
-{
-  static std::mt19937 gen(std::random_device{}());
-  static std::normal_distribution<double> dist(0.0,1.0);
-
-  for (const auto &cell : dof_handler.active_cell_iterators())
-  {
-    const unsigned int cell_id = cell->active_cell_index();
-
-    for (unsigned int q=0; q<n_q_points; ++q)
-    {
-      for (unsigned int r=0; r < n; r++)
-      {
-        rhs_values[cell_id][q][r] =
-            1e-6*dist(gen)/std::sqrt(delta_t);
-      }
-    }
-  }
-}
 
 template <int n>
 void Step3<n>::make_grid()
 {
   GridGenerator::hyper_cube(triangulation, -1, 1, true);
   triangulation.refine_global(
-    4
+    6
   );
 
   std::cout << "Number of active cells: " << triangulation.n_active_cells()
@@ -415,8 +374,6 @@ void Step3<n>::local_assemble_system(
   //======= ACEGEN=======
 
   RightHandSide<n> rhs_function;
-  rhs_function.set_time(this->time);
-  rhs_function.set_dt(this->delta_t);
 
   scratch_data.fe_values.reinit(cell);
 
@@ -439,14 +396,12 @@ void Step3<n>::local_assemble_system(
 
     equation(scratch_data.acegen_scratch,
             scratch_data.values_newton[q_index],
-            scratch_data.values_old[q_index],
         scratch_data.gradients_newton[q_index],
         dPsiDu[q_index],
         dPsidGradU[q_index],
         dPsiDu2[q_index],
         dPsidUdGradU[q_index],
-        dPsidGradU2[q_index], // 2, 2, 3, 3
-        &this->delta_t 
+        dPsidGradU2[q_index] // 2, 2, 3, 3
       );
 
       const auto &sd = scratch_data;
@@ -498,42 +453,6 @@ void Step3<n>::local_assemble_system(
 }
 
 template <int n>
-double Step3<n>::compute_energy()
-{
-    QGauss<3> quadrature(fe.degree + 1);
-    FEValues<3> fe_values(fe, quadrature,
-                          update_gradients | update_JxW_values);
-
-    const unsigned int n_q = quadrature.size();
-
-    std::vector<std::vector<Tensor<1,3>>> grads(n_q,
-        std::vector<Tensor<1,3>>(n));
-
-    double energy = 0.0;
-
-    for (const auto &cell : dof_handler.active_cell_iterators())
-    {
-        fe_values.reinit(cell);
-        fe_values.get_function_gradients(solution, grads);
-
-        for (unsigned int q = 0; q < n_q; ++q)
-        {
-            const auto &g1 = grads[q][0];
-            const auto &g2 = grads[q][1];
-
-            double psi =
-                0.5 * g1.norm_square()
-              + 1.0 * g2.norm_square();
-
-            energy += psi * fe_values.JxW(q);
-        }
-    }
-
-    return energy;
-}
-
-
-template <int n>
 void Step3<n>::copy_local_to_global(const AssemblyCopyData &copy_data)
   {
     zero_constraints.distribute_local_to_global(
@@ -574,54 +493,26 @@ void Step3<n>::solve()
 }
 
 template <int n>
-void Step3<n>::time_step_update()
-{
-    if (newton_iteration <= optimal_it) {
-      // self.dt.assign(min(dt_max, float(self.dt) * min(1.6, optimal_it / (iterations + 0.001))));
-        delta_t = std::min(dt_max, delta_t*std::min(max_multiplier, double(optimal_it/(newton_iteration + 0.001))));
-    }
-    else {
-      // self.dt.assign(float(self.dt) * max(0.5, optimal_it / iterations));
-      delta_t = delta_t*std::max(min_multiplier, double(optimal_it / newton_iteration));
-    }
-
-    if (time + delta_t > final_time) {
-        delta_t = final_time - time;
-    }
-      
-    else if (delta_t < 1e-6) {
-        throw std::invalid_argument("Time step too small!");
-    }
-    std::cout << "Our time step is " << delta_t << std::endl;
-}
-
-template <int n>
 void Step3<n>::output_results() const
 {
-  static std::vector<std::pair<double, std::string>> times_and_names;
-
   DataOut<3> data_out;
   data_out.attach_dof_handler(dof_handler);
   data_out.add_data_vector(solution, "solution");
   data_out.build_patches();
 
-  const std::string filename = "output/solution-" + Utilities::int_to_string(timestep_number) + ".vtu";
+  const std::string filename = "output/solution.vtu";
   std::ofstream output(filename);
   data_out.write(output, DataOutBase::vtu);
 
   std::cout << "Output written to " << filename << std::endl;
-  times_and_names.push_back(
-                {time, filename});
 
   std::ofstream pvd_output ("solution.pvd");
-  DataOutBase::write_pvd_record(pvd_output, times_and_names);
 }
 
 template <int n>
 double Step3<n>::compute_residual()
 {
     ExactSolution<n> exact_solution;
-    exact_solution.set_time(time);
 
     Vector<float> difference_per_cell(triangulation.n_active_cells());
     VectorTools::integrate_difference(dof_handler,
@@ -647,7 +538,6 @@ void Step3<n>::run()
   std::cout << n_q_points << std::endl;
 
 ExactSolution<n> exact_solution0;
-exact_solution0.set_time(time);
 
   VectorTools::project(dof_handler,
                       zero_constraints,
@@ -661,53 +551,24 @@ exact_solution0.set_time(time);
 
   output_results();
 
-  std::cout << time << std::endl;
-  while (time < final_time)
+  newton_iteration = 0;
+  double residual_norm = 1.0;
+  while (residual_norm > 1e-10 && newton_iteration < max_it)
   {
-    time+=delta_t;
-    timestep_number++;
+    //newton_iterate = 0.0;
+    assemble_system();
+    residual_norm = system_rhs.l2_norm();
 
-    generate_rhs();
+    std::cout << "The norm of our solution is: " << residual_norm << std::endl;
 
-    std::cout<< "Time: " << time << std::endl;
-    oldsolution = solution;
-    newton_iteration = 0;
-    double residual_norm = 1.0;
-    while (residual_norm > 1e-10 && newton_iteration < max_it)
-    {
-      //newton_iterate = 0.0;
-      assemble_system();
-      residual_norm = system_rhs.l2_norm();
+    solve();
 
-      std::cout << "The norm of our solution is: " << residual_norm << std::endl;
-
-      solve();
-
-      //std::cout << "  Residual: " << residual_norm << std::endl;
-      newton_iteration++;
-    }
-
-    if (newton_iteration == max_it)
-    {
-        std::cout << "Newton failed. Reducing time step." << std::endl;
-        solution = oldsolution;
-
-        time -= delta_t;
-        timestep_number--;
-
-        delta_t *= 0.5;
-        if (delta_t < dt_min)
-            throw std::runtime_error("Time step too small!");
-
-        continue;
-    }
+    newton_iteration++;
+  }
 
     std::cout << "Chyba: " << 100*compute_residual() / solution.linfty_norm() << "%" << std::endl;
-    std::cout << "Energie: " << compute_energy() << std::endl;
 
-    //time_step_update();
     output_results();
-  }
 }
 
 
@@ -717,7 +578,7 @@ int main()
     using namespace dealii;
     try
       {
-        MultithreadInfo::set_thread_limit(8);
+        MultithreadInfo::set_thread_limit();
   
         Step3<2> double_ditch;
         double_ditch.run();
