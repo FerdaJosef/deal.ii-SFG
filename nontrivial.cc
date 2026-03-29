@@ -119,6 +119,7 @@ struct AssemblyScratchData
   void output_results() const;
   void generate_rhs();
   double compute_residual();
+  double compute_energy();
 
   Triangulation<3> triangulation;
   const FESystem<3>    fe;
@@ -157,14 +158,14 @@ Step3<n>::Step3()
   , dof_handler(triangulation)
   , n_q_points(QGauss<3>(fe.degree + 1).size())
   , time(0.0)
-  , final_time(10000.0)
-  , delta_t(0.01)
+  , final_time(0.1)
+  , delta_t(1e-2)
   , timestep_number(0)
   , max_it(10)
-  , max_multiplier(1.2)
+  , max_multiplier(1.6)
   , min_multiplier(0.5)
-  , optimal_it(6)
-  , dt_max(5.0)
+  , optimal_it(5)
+  , dt_max(0.002)
   , dt_min(1e-7)
   , newton_iteration(0)
 {}
@@ -173,41 +174,58 @@ template <int n>
 class RightHandSide : public Function<3>
 {
 public:
-  RightHandSide(double time = 0.0)
-    : Function(n, time)
-    , period(0.2)
+  RightHandSide(double time = 0.0, double dt = 0.0)
+    : Function<3>(n, time), dt(dt)
   {}
 
-  virtual double value(const Point<3>  &p,
-                       const unsigned int component) const override;
-  
-  private:
-    const double period;
+  virtual double value(const Point<3> &p,
+                       const unsigned int component = 0) const override;
+
+  void set_dt(double new_dt) { dt = new_dt; }
+
+private:
+  double dt;
 };
 
 
 template <int n>
-double RightHandSide<n>::value(const Point<3> &p, const unsigned int component) const
+double RightHandSide<n>::value(const Point<3> &p,
+                               const unsigned int component) const
 {
-    (void)p;
-    (void)component;
-    //const double t = this->get_time();
+    double t = this->get_time();
 
-    static std::mt19937 gen(std::random_device{}());
-    static std::normal_distribution<double> dist(0.0,1.0);
+    const double pi = numbers::PI;
 
-    //double sample;
-    //sample = d(gen);
+double du1_dt =
+   -std::exp(-t) * std::sin(pi*p[0]) * std::sin(pi*p[1]) * std::sin(pi*p[2])
+   -2.0 * std::exp(-4*t) * std::sin(2*pi*p[0]) * std::sin(2*pi*p[1]) * std::sin(2*pi*p[2]);
+
+double lap_u1 =
+   -3.0*pi*pi * std::exp(-t) * std::sin(pi*p[0]) * std::sin(pi*p[1]) * std::sin(pi*p[2])
+   -6.0*pi*pi * std::exp(-4*t) * std::sin(2*pi*p[0]) * std::sin(2*pi*p[1]) * std::sin(2*pi*p[2]);
+
+double f1 = du1_dt - lap_u1;
+
+double du2_dt =
+   -2.0 * std::exp(-2*t) * std::sin(pi*p[0]) * std::sin(pi*p[1]) * std::sin(pi*p[2])
+   -0.9 * std::exp(-3*t) * std::sin(2*pi*p[0]) * std::sin(2*pi*p[1]) * std::sin(2*pi*p[2]);
+
+double lap_u2 =
+   -3.0*pi*pi * std::exp(-2*t) * std::sin(pi*p[0]) * std::sin(pi*p[1]) * std::sin(pi*p[2])
+   -3.6*pi*pi * std::exp(-3*t) * std::sin(2*pi*p[0]) * std::sin(2*pi*p[1]) * std::sin(2*pi*p[2]);
+
+double f2 = du2_dt - 2.0 * lap_u2;
 
     if (component == 0)
-      return std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
-
+    {
+        return f1;
+    }
     else if (component == 1)
-      return std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
+    {
+        return f2;
+    }
 
-  else
     return 0.0;
-
 }
 
 template <int n>
@@ -224,14 +242,22 @@ class ExactSolution : public Function<3>
     (void)p;
     (void)component;
 
-    //const double t = this->get_time();
+    double t = this->get_time();
 
-    static std::mt19937 gen(std::random_device{}());
-    static std::normal_distribution<double> dist(0.0, 1.0);
+    const double pi = numbers::PI;
 
-    double sample;
-    sample = dist(gen)*0.0;
-    return sample;
+    double u1 =
+        std::exp(-t) * std::sin(pi*p[0]) * std::sin(pi*p[1]) * std::sin(pi*p[2])
+      + 0.5 * std::exp(-4*t) * std::sin(2*pi*p[0]) * std::sin(2*pi*p[1]) * std::sin(2*pi*p[2]);
+
+    double u2 =
+        std::exp(-2*t) * std::sin(pi*p[0]) * std::sin(pi*p[1]) * std::sin(pi*p[2])
+      + 0.3 * std::exp(-3*t) * std::sin(2*pi*p[0]) * std::sin(2*pi*p[1]) * std::sin(2*pi*p[2]);
+
+    if (component == 0) return u1;
+    if (component == 1) return u2;
+
+    return 0.0;
   }
 };
 
@@ -240,7 +266,7 @@ void Step3<n>::generate_rhs()
 {
   static std::mt19937 gen(std::random_device{}());
   static std::normal_distribution<double> dist(0.0,1.0);
-  
+
   for (const auto &cell : dof_handler.active_cell_iterators())
   {
     const unsigned int cell_id = cell->active_cell_index();
@@ -259,9 +285,9 @@ void Step3<n>::generate_rhs()
 template <int n>
 void Step3<n>::make_grid()
 {
-  GridGenerator::hyper_cube(triangulation, -10, 10, true);
+  GridGenerator::hyper_cube(triangulation, -1, 1, true);
   triangulation.refine_global(
-    4
+    6
   );
 
   std::cout << "Number of active cells: " << triangulation.n_active_cells()
@@ -276,10 +302,14 @@ void Step3<n>::setup_system()
             << std::endl;
 
   zero_constraints.clear();
-  VectorTools::interpolate_boundary_values(dof_handler,
-                                            0,
-                                            Functions::ZeroFunction<3>(n),
-                                            zero_constraints);
+  for (int i = 0; i < 6; i++)
+  {
+    VectorTools::interpolate_boundary_values(dof_handler,
+                                                i,
+                                                Functions::ZeroFunction<3>(n),
+                                                zero_constraints);
+  }
+
   zero_constraints.close();
 
   nonzero_constraints.clear();
@@ -291,7 +321,7 @@ void Step3<n>::setup_system()
   nonzero_constraints.close();
 
   DynamicSparsityPattern dsp(dof_handler.n_dofs());
-  DoFTools::make_sparsity_pattern(dof_handler, dsp, nonzero_constraints, true);
+  DoFTools::make_sparsity_pattern(dof_handler, dsp, zero_constraints, true);
   sparsity_pattern.copy_from(dsp);
 
   system_matrix.reinit(sparsity_pattern);
@@ -400,8 +430,9 @@ void Step3<n>::local_assemble_system(
           std::vector<Tensor<2,dim>>(n)));
   //======= ACEGEN=======
 
-  //RightHandSide rhs_function;
-  //rhs_function.set_time(this->time);
+  RightHandSide<n> rhs_function;
+  rhs_function.set_time(this->time);
+  rhs_function.set_dt(this->delta_t);
 
   scratch_data.fe_values.reinit(cell);
 
@@ -416,9 +447,11 @@ void Step3<n>::local_assemble_system(
 
   //right_hand_side(fe_values.get_quadrature_points(), rhs_values);
 
+  const FEValuesExtractors::Vector displacements (0);
+
   for (const unsigned int q_index : scratch_data.fe_values.quadrature_point_indices())
     {
-    //const auto &x_q = fe_values.quadrature_point(q_index);
+    const auto &x_q = scratch_data.fe_values.quadrature_point(q_index);
 
     equation(scratch_data.acegen_scratch,
             scratch_data.values_newton[q_index],
@@ -433,24 +466,7 @@ void Step3<n>::local_assemble_system(
       );
 
       const auto &sd = scratch_data;
-      for (const unsigned int i : scratch_data.fe_values.dof_indices())
-        {
-        const unsigned int component_i = fe.system_to_component_index(i).first;
-        
-        // number of degrees of freedom is equql to number "geometric dof" = support points
-        // function fe.system_to_component_index(i) returns a pair:
-        // first is the corresponding component of vector system
-        // second is the index of support point
-        // shape value known about it through index i
-        // ted tim vzdycky zredukuju dimenzi objektu a prevedu to na skalarni pripad
 
-          copy_data.cell_rhs(i) -= (sd.fe_values.shape_value(i, q_index) * 
-                          dPsiDu[q_index][component_i]
-
-                      + sd.fe_values.shape_grad(i, q_index) * dPsidGradU[q_index][component_i]
-                          + sd.fe_values.shape_value(i,q_index) * rhs_values[cell_id][q_index][component_i]) *
-                          sd.fe_values.JxW(q_index);
-          }
       for (const unsigned int i : scratch_data.fe_values.dof_indices())
       {
         const unsigned int component_i = fe.system_to_component_index(i).first;
@@ -478,15 +494,65 @@ void Step3<n>::local_assemble_system(
                 ) *
                 sd.fe_values.JxW(q_index);           // dx
         }
+
+                  // number of degrees of freedom is equql to number "geometric dof" = support points
+          // function fe.system_to_component_index(i) returns a pair:
+          // first is the corresponding component of vector system
+          // second is the index of support point
+          // shape value known about it through index i
+          // ted tim vzdycky zredukuju dimenzi objektu a prevedu to na skalarni pripad
+
+            copy_data.cell_rhs(i) -= (sd.fe_values.shape_value(i, q_index) * 
+                            dPsiDu[q_index][component_i]
+
+                        + sd.fe_values.shape_grad(i, q_index) * dPsidGradU[q_index][component_i]
+                            - sd.fe_values.shape_value(i,q_index) * rhs_function.value(x_q, component_i)) *
+                            sd.fe_values.JxW(q_index);
       }
     }
   cell->get_dof_indices(copy_data.local_dof_indices);
 }
 
 template <int n>
+double Step3<n>::compute_energy()
+{
+    QGauss<3> quadrature(fe.degree + 1);
+    FEValues<3> fe_values(fe, quadrature,
+                          update_gradients | update_JxW_values);
+
+    const unsigned int n_q = quadrature.size();
+
+    std::vector<std::vector<Tensor<1,3>>> grads(n_q,
+        std::vector<Tensor<1,3>>(n));
+
+    double energy = 0.0;
+
+    for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+        fe_values.reinit(cell);
+        fe_values.get_function_gradients(solution, grads);
+
+        for (unsigned int q = 0; q < n_q; ++q)
+        {
+            const auto &g1 = grads[q][0];
+            const auto &g2 = grads[q][1];
+
+            double psi =
+                0.5 * g1.norm_square()
+              + 1.0 * g2.norm_square();
+
+            energy += psi * fe_values.JxW(q);
+        }
+    }
+
+    return energy;
+}
+
+
+template <int n>
 void Step3<n>::copy_local_to_global(const AssemblyCopyData &copy_data)
   {
-    nonzero_constraints.distribute_local_to_global(
+    zero_constraints.distribute_local_to_global(
       copy_data.cell_matrix,
       copy_data.cell_rhs,
       copy_data.local_dof_indices,
@@ -511,13 +577,13 @@ void Step3<n>::solve()
 
   solver.solve(system_matrix, newton_iterate, system_rhs, preconditioner);
 
-  nonzero_constraints.distribute(newton_iterate);
+  zero_constraints.distribute(newton_iterate);
 
   const double alpha = determine_step_length();
 
   solution.add(alpha, newton_iterate);
 
-  nonzero_constraints.distribute(solution);
+  zero_constraints.distribute(solution);
 
   std::cout << solver_control.last_step()
             << " iterations needed to obtain convergence." << std::endl;
@@ -555,7 +621,7 @@ void Step3<n>::output_results() const
   data_out.add_data_vector(solution, "solution");
   data_out.build_patches();
 
-  const std::string filename = "output/solution-ditch-" + Utilities::int_to_string(timestep_number) + ".vtu";
+  const std::string filename = "output/solution-" + Utilities::int_to_string(timestep_number) + ".vtu";
   std::ofstream output(filename);
   data_out.write(output, DataOutBase::vtu);
 
@@ -567,6 +633,25 @@ void Step3<n>::output_results() const
   DataOutBase::write_pvd_record(pvd_output, times_and_names);
 }
 
+template <int n>
+double Step3<n>::compute_residual()
+{
+    ExactSolution<n> exact_solution;
+    exact_solution.set_time(time);
+
+    Vector<float> difference_per_cell(triangulation.n_active_cells());
+    VectorTools::integrate_difference(dof_handler,
+                                        solution,
+                                        exact_solution,
+                                        difference_per_cell,
+                                        QGauss<3>(fe.degree + 1),
+                                        VectorTools::L2_norm);
+    const double L2_error =
+    VectorTools::compute_global_error(triangulation,
+                                        difference_per_cell,
+                                        VectorTools::L2_norm);
+    return L2_error;
+}
 
 template <int n>
 void Step3<n>::run()
@@ -577,13 +662,16 @@ void Step3<n>::run()
 
   std::cout << n_q_points << std::endl;
 
+ExactSolution<n> exact_solution0;
+exact_solution0.set_time(time);
+
   VectorTools::project(dof_handler,
-                      nonzero_constraints,
+                      zero_constraints,
                       QGauss<3>(fe.degree + 1),
-                      ExactSolution<n>(0.0),
+                      exact_solution0,
                       solution);
 
-  nonzero_constraints.distribute(solution);
+  zero_constraints.distribute(solution);
 
   //std::cout << "The difference is " << L2_error << std::endl;
 
@@ -601,7 +689,7 @@ void Step3<n>::run()
     oldsolution = solution;
     newton_iteration = 0;
     double residual_norm = 1.0;
-    while (residual_norm > 1e-15 && newton_iteration < max_it)
+    while (residual_norm > 1e-10 && newton_iteration < max_it)
     {
       //newton_iterate = 0.0;
       assemble_system();
@@ -630,10 +718,10 @@ void Step3<n>::run()
         continue;
     }
 
-      std::cout << "Norma: " << solution.linfty_norm() << std::endl;
+    std::cout << "Chyba: " << 100*compute_residual() / solution.linfty_norm() << "%" << std::endl;
+    std::cout << "Energie: " << compute_energy() << std::endl;
 
-    std::cout << newton_iteration << std::endl;
-    time_step_update();
+    //time_step_update();
     output_results();
   }
 }
@@ -645,7 +733,7 @@ int main()
     using namespace dealii;
     try
       {
-        MultithreadInfo::set_thread_limit();
+        MultithreadInfo::set_thread_limit(8);
   
         Step3<2> double_ditch;
         double_ditch.run();
