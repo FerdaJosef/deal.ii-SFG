@@ -45,7 +45,8 @@
 #include <deal.II/numerics/data_out.h>
 #include <fstream>
 #include <iostream>
-#include "AceGen/equation-3D.h"
+#include "AceGen/equation.h"
+#include "wrapper.cc"
 
 #include <math.h>
 #include <deal.II/base/conditional_ostream.h>
@@ -413,7 +414,7 @@ void Step3<dim, n>::local_assemble_system(
     {
     //const auto &x_q = fe_values.quadrature_point(q_index);
 
-    equation(scratch_data.acegen_scratch,
+    wrapper(scratch_data.acegen_scratch,
             scratch_data.values_newton[q_index],
             scratch_data.values_old[q_index],
         scratch_data.gradients_newton[q_index],
