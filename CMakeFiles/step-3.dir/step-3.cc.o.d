@@ -2112,7 +2112,7 @@ CMakeFiles/step-3.dir/step-3.cc.o: \
  /home/josef/deal.II-install/include/deal.II/hp/fe_values.h \
  /home/josef/deal.II-install/include/deal.II/numerics/data_postprocessor.h \
  /usr/include/c++/13/any \
- /home/josef/deal.II-install/examples/deal.ii-SFG/AceGen/equation_3_2D.h \
+ /home/josef/deal.II-install/examples/deal.ii-SFG/AceGen/equation-3D.h \
  /usr/include/c++/13/math.h \
  /home/josef/deal.II-install/include/deal.II/base/conditional_ostream.h \
  /home/josef/deal.II-install/include/deal.II/grid/grid_tools.h \
