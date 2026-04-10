@@ -45,7 +45,7 @@
 #include <deal.II/numerics/data_out.h>
 #include <fstream>
 #include <iostream>
-#include "equation.h"
+#include "AceGen/equation_3_2D.h"
 
 #include <math.h>
 #include <deal.II/base/conditional_ostream.h>
@@ -70,7 +70,7 @@
 
 using namespace dealii;
 
-template <int n>
+template <int dim, int n>
 class Step3
 {
 public:
@@ -85,15 +85,15 @@ private:
 
 struct AssemblyScratchData
 {
-  AssemblyScratchData(const FiniteElement<3> &fe);
+  AssemblyScratchData(const FiniteElement<dim> &fe);
   AssemblyScratchData(const AssemblyScratchData &scratch_data);
 
-  FEValues<3> fe_values;
+  FEValues<dim> fe_values;
 
   std::vector<Vector<double>> values_newton;
   std::vector<Vector<double>> values_old;
 
-  std::vector<std::vector<Tensor<1,3>>> gradients_newton;
+  std::vector<std::vector<Tensor<1,dim>>> gradients_newton;
 
   std::vector<double> acegen_scratch;
 };
@@ -108,7 +108,7 @@ struct AssemblyScratchData
   void assemble_system();
 
   void local_assemble_system(
-      const typename DoFHandler<3>::active_cell_iterator &cell,
+      const typename DoFHandler<dim>::active_cell_iterator &cell,
       AssemblyScratchData                                  &scratch,
       AssemblyCopyData                                     &copy_data);
   void copy_local_to_global(const AssemblyCopyData &copy_data);
@@ -120,9 +120,9 @@ struct AssemblyScratchData
   void generate_rhs();
   double compute_residual();
 
-  Triangulation<3> triangulation;
-  const FESystem<3>    fe;
-  DoFHandler<3>    dof_handler;
+  Triangulation<dim> triangulation;
+  const FESystem<dim>    fe;
+  DoFHandler<dim>    dof_handler;
 
   AffineConstraints<double> zero_constraints;
   AffineConstraints<double> nonzero_constraints;
@@ -149,36 +149,37 @@ struct AssemblyScratchData
   int optimal_it;
   double dt_max; double dt_min;
   int newton_iteration;
+  int solver_iteration;
 };
 
-template <int n>
-Step3<n>::Step3()
-  : fe(FE_Q<3>(1), n)
+template <int dim, int n>
+Step3<dim, n>::Step3()
+  : fe(FE_Q<dim>(1), n)
   , dof_handler(triangulation)
-  , n_q_points(QGauss<3>(fe.degree + 1).size())
+  , n_q_points(QGauss<dim>(fe.degree + 1).size())
   , time(0.0)
-  , final_time(5.0)
-  , delta_t(1e-5)
+  , final_time(50.0)
+  , delta_t(1e-4)
   , timestep_number(0)
   , max_it(10)
-  , max_multiplier(1.6)
+  , max_multiplier(1.2)
   , min_multiplier(0.5)
   , optimal_it(6)
-  , dt_max(0.2)
+  , dt_max(5.0)
   , dt_min(1e-7)
   , newton_iteration(0)
 {}
 
-template <int n>
-class RightHandSide : public Function<3>
+template <int dim, int n>
+class RightHandSide : public Function<dim>
 {
 public:
   RightHandSide(double time = 0.0)
-    : Function(n, time)
+    : Function<dim>(n, time)
     , period(0.2)
   {}
 
-  virtual double value(const Point<3>  &p,
+  virtual double value(const Point<dim>  &p,
                        const unsigned int component) const override;
   
   private:
@@ -186,8 +187,8 @@ public:
 };
 
 
-template <int n>
-double RightHandSide<n>::value(const Point<3> &p, const unsigned int component) const
+template <int dim, int n>
+double RightHandSide<dim, n>::value(const Point<dim> &p, const unsigned int component) const
 {
     (void)p;
     (void)component;
@@ -200,43 +201,68 @@ double RightHandSide<n>::value(const Point<3> &p, const unsigned int component) 
     //sample = d(gen);
 
     if (component == 0)
-      return std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
+      return std::sin(M_PI*p[0])*std::sin(M_PI*p[1]);
 
     else if (component == 1)
-      return std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
+      return std::sin(M_PI*p[0])*std::sin(M_PI*p[1]);
 
   else
     return 0.0;
 
 }
 
-template <int n>
-class ExactSolution : public Function<3>
+template <int dim, int n>
+class ExactSolution : public Function<dim>
 {
   public:
   ExactSolution(const double time = 0.)
-  : Function<3>(n, time)
+  : Function<dim>(n, time)
   {}
   
-  virtual double value(const Point<3> &p,
-                      const unsigned int component = n) const override
-  {
-    (void)p;
-    (void)component;
+virtual double value(const Point<dim> &p,
+                     const unsigned int component = 0) const override
+{
+  static std::mt19937 gen(std::random_device{}());
+  static std::normal_distribution<double> dist(0.0, 1.0);
 
-    //const double t = this->get_time();
+  double noise = dist(gen) * 1e-6;
 
-    static std::mt19937 gen(std::random_device{}());
-    static std::normal_distribution<double> dist(0.0, 1.0);
+const double r = p.norm();
+const double theta = std::atan2(p[1], p[0]);
 
-    double sample;
-    sample = dist(gen)*0.0;
-    return sample;
-  }
+if (r < 5.0)
+{
+    if (component == 0)
+    {
+        if (theta >= -M_PI/3.0 && theta < M_PI/3.0)
+            return 0.8 + noise;
+        else
+            return 0.0 + noise;
+    }
+
+    else if (component == 1)
+    {
+        if (theta >= M_PI/3.0 && theta < M_PI)
+            return 0.8 + noise;
+        else
+            return 0.0 + noise;
+    }
+
+    else if (component == 2)
+    {
+        if (theta >= -M_PI && theta < -M_PI/3.0)
+            return 0.8 + noise;
+        else
+            return 0.0 + noise;
+    }
+}
+
+return 0.0;
+}
 };
 
-template <int n>
-void Step3<n>::generate_rhs()
+template <int dim, int n>
+void Step3<dim, n>::generate_rhs()
 {
   static std::mt19937 gen(std::random_device{}());
   static std::normal_distribution<double> dist(0.0,1.0);
@@ -256,20 +282,20 @@ void Step3<n>::generate_rhs()
   }
 }
 
-template <int n>
-void Step3<n>::make_grid()
+template <int dim, int n>
+void Step3<dim, n>::make_grid()
 {
   GridGenerator::hyper_cube(triangulation, -10, 10, true);
   triangulation.refine_global(
-    4
+    7
   );
 
   std::cout << "Number of active cells: " << triangulation.n_active_cells()
             << std::endl;
 }
 
-template <int n>
-void Step3<n>::setup_system()
+template <int dim, int n>
+void Step3<dim, n>::setup_system()
 {
   dof_handler.distribute_dofs(fe);
   std::cout << "Number of degrees of freedom: " << dof_handler.n_dofs()
@@ -278,7 +304,7 @@ void Step3<n>::setup_system()
   zero_constraints.clear();
   VectorTools::interpolate_boundary_values(dof_handler,
                                             0,
-                                            Functions::ZeroFunction<3>(n),
+                                            Functions::ZeroFunction<dim>(n),
                                             zero_constraints);
   zero_constraints.close();
 
@@ -286,7 +312,7 @@ void Step3<n>::setup_system()
 
   DoFTools::make_periodicity_constraints(dof_handler, 0, 1, 0, nonzero_constraints); // x-direction
   DoFTools::make_periodicity_constraints(dof_handler, 2, 3, 1, nonzero_constraints); // y-direction
-  DoFTools::make_periodicity_constraints(dof_handler, 4, 5, 2, nonzero_constraints); // z-direction
+  //DoFTools::make_periodicity_constraints(dof_handler, 4, 5, 2, nonzero_constraints); // z-direction
 
   nonzero_constraints.close();
 
@@ -305,11 +331,11 @@ void Step3<n>::setup_system()
                   std::vector<Tensor<1,n>>(n_q_points));
 }
 
-template <int n>
-Step3<n>::AssemblyScratchData::AssemblyScratchData(const FiniteElement<3> &fe)
+template <int dim, int n>
+Step3<dim, n>::AssemblyScratchData::AssemblyScratchData(const FiniteElement<dim> &fe)
   :
   fe_values(fe,
-            QGauss<3>(fe.degree + 1),
+            QGauss<dim>(fe.degree + 1),
             update_values |
             update_gradients |
             update_quadrature_points |
@@ -322,13 +348,13 @@ Step3<n>::AssemblyScratchData::AssemblyScratchData(const FiniteElement<3> &fe)
   values_old.resize(n_q_points, Vector<double>(n));
 
   gradients_newton.resize(n_q_points,
-                          std::vector<Tensor<1,3>>(n));
+                          std::vector<Tensor<1,dim>>(n));
 
   acegen_scratch.resize(256);
 }
 
-template <int n>
-Step3<n>::AssemblyScratchData::AssemblyScratchData(
+template <int dim, int n>
+Step3<dim, n>::AssemblyScratchData::AssemblyScratchData(
     const AssemblyScratchData &scratch_data)
     : fe_values(scratch_data.fe_values.get_fe(),
                 scratch_data.fe_values.get_quadrature(),
@@ -340,8 +366,8 @@ Step3<n>::AssemblyScratchData::AssemblyScratchData(
     , acegen_scratch(scratch_data.acegen_scratch)
   {}
 
-template <int n>
-void Step3<n>::assemble_system()
+template <int dim, int n>
+void Step3<dim, n>::assemble_system()
 {
   system_matrix = 0;
   system_rhs = 0;
@@ -349,19 +375,19 @@ void Step3<n>::assemble_system()
   WorkStream::run(dof_handler.begin_active(),
                   dof_handler.end(),
                   *this,
-                  &Step3<n>::local_assemble_system,
-                  &Step3<n>::copy_local_to_global,
+                  &Step3<dim, n>::local_assemble_system,
+                  &Step3<dim, n>::copy_local_to_global,
                   AssemblyScratchData(fe),
                   AssemblyCopyData());
 }
 
-template <int n>
-void Step3<n>::local_assemble_system(
-        const typename DoFHandler<3>::active_cell_iterator &cell,
+template <int dim, int n>
+void Step3<dim, n>::local_assemble_system(
+        const typename DoFHandler<dim>::active_cell_iterator &cell,
         AssemblyScratchData                                  &scratch_data,
         AssemblyCopyData                                     &copy_data)
 {
-  const QGauss<3> quadrature_formula(fe.degree + 1);
+  const QGauss<dim> quadrature_formula(fe.degree + 1);
 
   const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
   //n_q_points    = quadrature_formula.size();
@@ -372,9 +398,6 @@ void Step3<n>::local_assemble_system(
   copy_data.local_dof_indices.resize(dofs_per_cell);
  
   scratch_data.fe_values.reinit(cell);
-
-
- const unsigned int dim=3;
 
   //Acegen OUTPUT
   //RESIDUAL
@@ -483,8 +506,8 @@ void Step3<n>::local_assemble_system(
   cell->get_dof_indices(copy_data.local_dof_indices);
 }
 
-template <int n>
-void Step3<n>::copy_local_to_global(const AssemblyCopyData &copy_data)
+template <int dim, int n>
+void Step3<dim, n>::copy_local_to_global(const AssemblyCopyData &copy_data)
   {
     nonzero_constraints.distribute_local_to_global(
       copy_data.cell_matrix,
@@ -494,17 +517,17 @@ void Step3<n>::copy_local_to_global(const AssemblyCopyData &copy_data)
       system_rhs);
   }
 
-template <int n>
-double Step3<n>::determine_step_length() const
+template <int dim, int n>
+double Step3<dim, n>::determine_step_length() const
 {
   return 1.0;
 }
 
-template <int n>
-void Step3<n>::solve()
+template <int dim, int n>
+void Step3<dim, n>::solve()
 {
-  SolverControl            solver_control(5000, 1e-6 * system_rhs.l2_norm());
-  SolverCG<Vector<double>> solver(solver_control);
+  SolverControl            solver_control(20000, 1e-6 * system_rhs.l2_norm());
+  SolverGMRES<Vector<double>> solver(solver_control);
 
   PreconditionJacobi<SparseMatrix<double>> preconditioner;
   preconditioner.initialize(system_matrix, 1.0);
@@ -519,12 +542,14 @@ void Step3<n>::solve()
 
   nonzero_constraints.distribute(solution);
 
-  std::cout << solver_control.last_step()
+  solver_iteration = solver_control.last_step();
+
+  std::cout << solver_iteration
             << " iterations needed to obtain convergence." << std::endl;
 }
 
-template <int n>
-void Step3<n>::time_step_update()
+template <int dim, int n>
+void Step3<dim, n>::time_step_update()
 {
     if (newton_iteration <= optimal_it) {
       // self.dt.assign(min(dt_max, float(self.dt) * min(1.6, optimal_it / (iterations + 0.001))));
@@ -545,17 +570,17 @@ void Step3<n>::time_step_update()
     std::cout << "Our time step is " << delta_t << std::endl;
 }
 
-template <int n>
-void Step3<n>::output_results() const
+template <int dim, int n>
+void Step3<dim, n>::output_results() const
 {
   static std::vector<std::pair<double, std::string>> times_and_names;
 
-  DataOut<3> data_out;
+  DataOut<dim> data_out;
   data_out.attach_dof_handler(dof_handler);
   data_out.add_data_vector(solution, "solution");
   data_out.build_patches();
 
-  const std::string filename = "output/solution-" + Utilities::int_to_string(timestep_number) + ".vtu";
+  const std::string filename = "results/solution-" + Utilities::int_to_string(timestep_number) + ".vtu";
   std::ofstream output(filename);
   data_out.write(output, DataOutBase::vtu);
 
@@ -563,13 +588,13 @@ void Step3<n>::output_results() const
   times_and_names.push_back(
                 {time, filename});
 
-  std::ofstream pvd_output ("solution.pvd");
+  std::ofstream pvd_output ("solution1.pvd");
   DataOutBase::write_pvd_record(pvd_output, times_and_names);
 }
 
 
-template <int n>
-void Step3<n>::run()
+template <int dim, int n>
+void Step3<dim, n>::run()
 {
 
   make_grid();
@@ -579,8 +604,8 @@ void Step3<n>::run()
 
   VectorTools::project(dof_handler,
                       nonzero_constraints,
-                      QGauss<3>(fe.degree + 1),
-                      ExactSolution<n>(0.0),
+                      QGauss<dim>(fe.degree + 1),
+                      ExactSolution<dim, n>(0.0),
                       solution);
 
   nonzero_constraints.distribute(solution);
@@ -630,6 +655,20 @@ void Step3<n>::run()
         continue;
     }
 
+    if (solver_iteration > 250) {
+            std::cout << "GMRES failed. Reducing time step." << std::endl;
+        solution = oldsolution;
+
+        time -= delta_t;
+        timestep_number--;
+
+        delta_t *= 0.5;
+        if (delta_t < dt_min)
+            throw std::runtime_error("Solver failed!");
+
+        continue;
+    }
+
     std::cout << newton_iteration << std::endl;
     time_step_update();
     output_results();
@@ -647,7 +686,7 @@ int main()
       {
         MultithreadInfo::set_thread_limit();
   
-        Step3<2> double_ditch;
+        Step3<2,3> double_ditch;
         double_ditch.run();
       }
     catch (std::exception &exc)
