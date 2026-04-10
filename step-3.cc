@@ -45,7 +45,7 @@
 #include <deal.II/numerics/data_out.h>
 #include <fstream>
 #include <iostream>
-#include "AceGen/equation_3_2D.h"
+#include "AceGen/equation-3D.h"
 
 #include <math.h>
 #include <deal.II/base/conditional_ostream.h>
@@ -227,37 +227,7 @@ virtual double value(const Point<dim> &p,
 
   double noise = dist(gen) * 1e-6;
 
-const double r = p.norm();
-const double theta = std::atan2(p[1], p[0]);
-
-if (r < 5.0)
-{
-    if (component == 0)
-    {
-        if (theta >= -M_PI/3.0 && theta < M_PI/3.0)
-            return 0.8 + noise;
-        else
-            return 0.0 + noise;
-    }
-
-    else if (component == 1)
-    {
-        if (theta >= M_PI/3.0 && theta < M_PI)
-            return 0.8 + noise;
-        else
-            return 0.0 + noise;
-    }
-
-    else if (component == 2)
-    {
-        if (theta >= -M_PI && theta < -M_PI/3.0)
-            return 0.8 + noise;
-        else
-            return 0.0 + noise;
-    }
-}
-
-return 0.0;
+  return 0.0;
 }
 };
 
@@ -287,7 +257,7 @@ void Step3<dim, n>::make_grid()
 {
   GridGenerator::hyper_cube(triangulation, -10, 10, true);
   triangulation.refine_global(
-    7
+    4
   );
 
   std::cout << "Number of active cells: " << triangulation.n_active_cells()
@@ -312,7 +282,7 @@ void Step3<dim, n>::setup_system()
 
   DoFTools::make_periodicity_constraints(dof_handler, 0, 1, 0, nonzero_constraints); // x-direction
   DoFTools::make_periodicity_constraints(dof_handler, 2, 3, 1, nonzero_constraints); // y-direction
-  //DoFTools::make_periodicity_constraints(dof_handler, 4, 5, 2, nonzero_constraints); // z-direction
+  DoFTools::make_periodicity_constraints(dof_handler, 4, 5, 2, nonzero_constraints); // z-direction
 
   nonzero_constraints.close();
 
@@ -686,7 +656,7 @@ int main()
       {
         MultithreadInfo::set_thread_limit();
   
-        Step3<2,3> double_ditch;
+        Step3<3,2> double_ditch;
         double_ditch.run();
       }
     catch (std::exception &exc)
