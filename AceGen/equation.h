@@ -11,7 +11,7 @@ Total size of Mathematica  code : 995 subexpressions
 Total size of C code            : 3444 bytes */
 
 /******************* S U B R O U T I N E *********************/
-void RandomEquation(double v[215],double U[2],double U0[2],double 
+void equation(double v[215],double U[2],double U0[2],double 
      (*dt),double GradU[2][3],double dPsiDu[2],double dPsidGradU[2][3]
      ,double dPsiDu2[2][2],double dPsidUdGradU[2][2][3]
      ,double dPsidGradU2[2][2][3][3])
