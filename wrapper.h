@@ -21,7 +21,6 @@ inline void equation_wrapper(
     std::vector<std::vector<Tensor<2,dim>>> &dPsidGradU2,
     double *dt)
 {
-    // ===== RAW ARRAYS (STACK, FAST) =====
 
     Assert(U.size() == n, ExcInternalError());
     Assert(dPsiDu.size() == n, ExcInternalError());
