@@ -36,7 +36,6 @@ inline void equation_wrapper(
     double dPsidUdGradU_raw[2][2][3];
     double dPsidGradU2_raw[2][2][3][3];
 
-    // ===== INPUT COPY (VERY CHEAP) =====
     for (unsigned int i = 0; i < n; ++i)
     {
         U_raw[i]  = U[i];
@@ -46,7 +45,6 @@ inline void equation_wrapper(
             GradU_raw[i][d] = GradU[i][d];
     }
 
-    // ===== CALL ACEGEN =====
     equation(v.data(),
                    U_raw,
                    U0_raw,
@@ -58,7 +56,6 @@ inline void equation_wrapper(
                    dPsidUdGradU_raw,
                    dPsidGradU2_raw);
 
-    // ===== OUTPUT COPY =====
     for (unsigned int i = 0; i < n; ++i)
     {
         dPsiDu[i] = dPsiDu_raw[i];
