@@ -63,7 +63,7 @@ CMAKE_BINARY_DIR = /home/josef/deal.II-install/examples/deal.ii-SFG
 # Directory level rules for the build root directory
 
 # The main recursive "all" target.
-all: CMakeFiles/step-3.dir/all
+all: CMakeFiles/step-3_1D.dir/all
 .PHONY : all
 
 # The main recursive "preinstall" target.
@@ -71,7 +71,7 @@ preinstall:
 .PHONY : preinstall
 
 # The main recursive "clean" target.
-clean: CMakeFiles/step-3.dir/clean
+clean: CMakeFiles/step-3_1D.dir/clean
 clean: CMakeFiles/run.dir/clean
 clean: CMakeFiles/debug.dir/clean
 clean: CMakeFiles/release.dir/clean
@@ -82,36 +82,36 @@ clean: CMakeFiles/info.dir/clean
 .PHONY : clean
 
 #=============================================================================
-# Target rules for target CMakeFiles/step-3.dir
+# Target rules for target CMakeFiles/step-3_1D.dir
 
 # All Build rule for target.
-CMakeFiles/step-3.dir/all:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/step-3.dir/build.make CMakeFiles/step-3.dir/depend
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/step-3.dir/build.make CMakeFiles/step-3.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/josef/deal.II-install/examples/deal.ii-SFG/CMakeFiles --progress-num=6,7 "Built target step-3"
-.PHONY : CMakeFiles/step-3.dir/all
+CMakeFiles/step-3_1D.dir/all:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/step-3_1D.dir/build.make CMakeFiles/step-3_1D.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/step-3_1D.dir/build.make CMakeFiles/step-3_1D.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/josef/deal.II-install/examples/deal.ii-SFG/CMakeFiles --progress-num=6,7 "Built target step-3_1D"
+.PHONY : CMakeFiles/step-3_1D.dir/all
 
 # Build rule for subdir invocation for target.
-CMakeFiles/step-3.dir/rule: cmake_check_build_system
+CMakeFiles/step-3_1D.dir/rule: cmake_check_build_system
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/josef/deal.II-install/examples/deal.ii-SFG/CMakeFiles 2
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/step-3.dir/all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/step-3_1D.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/josef/deal.II-install/examples/deal.ii-SFG/CMakeFiles 0
-.PHONY : CMakeFiles/step-3.dir/rule
+.PHONY : CMakeFiles/step-3_1D.dir/rule
 
 # Convenience name for target.
-step-3: CMakeFiles/step-3.dir/rule
-.PHONY : step-3
+step-3_1D: CMakeFiles/step-3_1D.dir/rule
+.PHONY : step-3_1D
 
 # clean rule for target.
-CMakeFiles/step-3.dir/clean:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/step-3.dir/build.make CMakeFiles/step-3.dir/clean
-.PHONY : CMakeFiles/step-3.dir/clean
+CMakeFiles/step-3_1D.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/step-3_1D.dir/build.make CMakeFiles/step-3_1D.dir/clean
+.PHONY : CMakeFiles/step-3_1D.dir/clean
 
 #=============================================================================
 # Target rules for target CMakeFiles/run.dir
 
 # All Build rule for target.
-CMakeFiles/run.dir/all: CMakeFiles/step-3.dir/all
+CMakeFiles/run.dir/all: CMakeFiles/step-3_1D.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/run.dir/build.make CMakeFiles/run.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/run.dir/build.make CMakeFiles/run.dir/build
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/josef/deal.II-install/examples/deal.ii-SFG/CMakeFiles --progress-num=4 "Built target run"

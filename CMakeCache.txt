@@ -147,7 +147,7 @@ CMAKE_PROJECT_DESCRIPTION:STATIC=
 CMAKE_PROJECT_HOMEPAGE_URL:STATIC=
 
 //Value Computed by CMake
-CMAKE_PROJECT_NAME:STATIC=step-3
+CMAKE_PROJECT_NAME:STATIC=step-3_1D
 
 //Path to a program.
 CMAKE_RANLIB:FILEPATH=/usr/bin/ranlib
@@ -219,6 +219,15 @@ PERL_EXECUTABLE:FILEPATH=/usr/bin/perl
 
 //The directory containing a CMake configuration file for deal.II.
 deal.II_DIR:PATH=/home/josef/deal.II-install/lib/cmake/deal.II
+
+//Value Computed by CMake
+step-3_1D_BINARY_DIR:STATIC=/home/josef/deal.II-install/examples/deal.ii-SFG
+
+//Value Computed by CMake
+step-3_1D_IS_TOP_LEVEL:STATIC=ON
+
+//Value Computed by CMake
+step-3_1D_SOURCE_DIR:STATIC=/home/josef/deal.II-install/examples/deal.ii-SFG
 
 //Value Computed by CMake
 step-3_BINARY_DIR:STATIC=/home/josef/deal.II-install/examples/deal.ii-SFG

@@ -66,9 +66,9 @@ include CMakeFiles/run.dir/compiler_depend.make
 # Include the progress variables for this target.
 include CMakeFiles/run.dir/progress.make
 
-CMakeFiles/run: step-3
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --blue --bold --progress-dir=/home/josef/deal.II-install/examples/deal.ii-SFG/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Run step-3 with Debug configuration"
-	./step-3
+CMakeFiles/run: step-3_1D
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --blue --bold --progress-dir=/home/josef/deal.II-install/examples/deal.ii-SFG/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Run step-3_1D with Debug configuration"
+	./step-3_1D
 
 run: CMakeFiles/run
 run: CMakeFiles/run.dir/build.make

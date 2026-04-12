@@ -96,6 +96,17 @@ struct AssemblyScratchData
   std::vector<std::vector<Tensor<1,dim>>> gradients_newton;
 
   std::vector<double> acegen_scratch;
+
+  // ===== deal.II (readable layer) =====
+  Vector<double> dPsiDu;
+
+  std::vector<Tensor<1,dim>> dPsidGradU;
+
+  FullMatrix<double> dPsiDu2;
+
+  std::vector<std::vector<Tensor<1,dim>>> dPsidUdGradU;
+
+  std::vector<std::vector<Tensor<2,dim>>> dPsidGradU2;
 };
  
   struct AssemblyCopyData
@@ -158,11 +169,11 @@ Step3<dim, n>::Step3()
   , dof_handler(triangulation)
   , n_q_points(QGauss<dim>(fe.degree + 1).size())
   , time(0.0)
-  , final_time(50.0)
+  , final_time(150.0)
   , delta_t(1e-4)
   , timestep_number(0)
   , max_it(10)
-  , max_multiplier(1.2)
+  , max_multiplier(2.0)
   , min_multiplier(0.5)
   , optimal_it(6)
   , dt_max(5.0)
@@ -350,6 +361,15 @@ Step3<dim, n>::AssemblyScratchData::AssemblyScratchData(const FiniteElement<dim>
   gradients_newton.resize(n_q_points,
                           std::vector<Tensor<1,dim>>(n));
 
+  dPsiDu.reinit(n);
+  dPsiDu2.reinit(n, n);
+
+  dPsidGradU.resize(n);
+
+  dPsidUdGradU.resize(n, std::vector<Tensor<1,dim>>(n));
+
+  dPsidGradU2.resize(n, std::vector<Tensor<2,dim>>(n));
+
   acegen_scratch.resize(256);
 }
 
@@ -364,6 +384,11 @@ Step3<dim, n>::AssemblyScratchData::AssemblyScratchData(
     , values_old(scratch_data.values_old)
     , gradients_newton(scratch_data.gradients_newton)
     , acegen_scratch(scratch_data.acegen_scratch)
+    , dPsiDu(scratch_data.dPsiDu)
+    , dPsidGradU(scratch_data.dPsidGradU)
+    , dPsiDu2(scratch_data.dPsiDu2)
+    , dPsidUdGradU(scratch_data.dPsidUdGradU)
+    , dPsidGradU2(scratch_data.dPsidGradU2)
   {}
 
 template <int dim, int n>
@@ -399,28 +424,6 @@ void Step3<dim, n>::local_assemble_system(
  
   scratch_data.fe_values.reinit(cell);
 
-  //Acegen OUTPUT
-  //RESIDUAL
-  std::vector<Vector<double>> dPsiDu(n_q_points, Vector<double>(n));
-  
-  std::vector<std::vector<Tensor<1,dim>>> dPsidGradU(
-      n_q_points,
-      std::vector<Tensor<1,dim>>(n));
-
-  //TANGENT
-  std::vector<FullMatrix<double>> dPsiDu2(n_q_points, FullMatrix<double>(n,n));
-  
-  std::vector<std::vector<std::vector<Tensor<1,dim>>>> dPsidUdGradU(
-      n_q_points,
-      std::vector<std::vector<Tensor<1,dim>>>(
-          n,
-          std::vector<Tensor<1,dim>>(n)));
-
-  std::vector<std::vector<std::vector<Tensor<2,dim>>>> dPsidGradU2(
-      n_q_points,
-      std::vector<std::vector<Tensor<2,dim>>>(
-          n,
-          std::vector<Tensor<2,dim>>(n)));
   //======= ACEGEN=======
 
   //RightHandSide rhs_function;
@@ -447,11 +450,11 @@ void Step3<dim, n>::local_assemble_system(
             scratch_data.values_newton[q_index],
             scratch_data.values_old[q_index],
         scratch_data.gradients_newton[q_index],
-        dPsiDu[q_index],
-        dPsidGradU[q_index],
-        dPsiDu2[q_index],
-        dPsidUdGradU[q_index],
-        dPsidGradU2[q_index], // 2, 2, 3, 3
+        scratch_data.dPsiDu,
+        scratch_data.dPsidGradU,
+        scratch_data.dPsiDu2,
+        scratch_data.dPsidUdGradU,
+        scratch_data.dPsidGradU2, // 2, 2, 3, 3
         &this->delta_t 
       );
 
@@ -468,9 +471,9 @@ void Step3<dim, n>::local_assemble_system(
         // ted tim vzdycky zredukuju dimenzi objektu a prevedu to na skalarni pripad
 
           copy_data.cell_rhs(i) -= (sd.fe_values.shape_value(i, q_index) * 
-                          dPsiDu[q_index][component_i]
+                          sd.dPsiDu[component_i]
 
-                      + sd.fe_values.shape_grad(i, q_index) * dPsidGradU[q_index][component_i]
+                      + sd.fe_values.shape_grad(i, q_index) * sd.dPsidGradU[component_i]
                           + sd.fe_values.shape_value(i,q_index) * rhs_values[cell_id][q_index][component_i]) *
                           sd.fe_values.JxW(q_index);
           }
@@ -484,19 +487,19 @@ void Step3<dim, n>::local_assemble_system(
 
             copy_data.cell_matrix(i, j) +=
                 (sd.fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
-                    dPsidGradU2[q_index][component_i][component_j] *           // dPsi/d2(grad u)
+                    sd.dPsidGradU2[component_i][component_j] *           // dPsi/d2(grad u)
                 sd.fe_values.shape_grad(j, q_index)    // grad phi_j(x_q)
                 + 
                 sd.fe_values.shape_value(i, q_index) * // phi_i(x_q)
-                    dPsiDu2[q_index][component_i][component_j] *           // dPsi/d2( u)
+                    sd.dPsiDu2(component_i, component_j) *           // dPsi/d2( u)
                 sd.fe_values.shape_value(j, q_index)     // phi_j(x_q)
                 +
                 sd.fe_values.shape_value(i, q_index) * //  phi_i(x_q)
-                    dPsidUdGradU[q_index][component_i][component_j] *           // dPsi/d(grad u)du
+                    sd.dPsidUdGradU[component_i][component_j] *           // dPsi/d(grad u)du
                 sd.fe_values.shape_grad(j, q_index)     // grad phi_j(x_q)
                 +
                 sd.fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
-                    dPsidUdGradU[q_index][component_i][component_j] *           // dPsi/d(grad u)du
+                    sd.dPsidUdGradU[component_i][component_j] *           // dPsi/d(grad u)du
                 sd.fe_values.shape_value(j, q_index)     // phi_j(x_q)
                 ) *
                 sd.fe_values.JxW(q_index);           // dx

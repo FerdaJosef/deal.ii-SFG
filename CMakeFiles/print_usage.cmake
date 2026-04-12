@@ -1,7 +1,7 @@
 message(
 "###
 #
-#  Project  step-3  set up with  deal.II-9.7.0  found at
+#  Project  step-3_1D  set up with  deal.II-9.7.0  found at
 #      /home/josef/deal.II-install
 #
 #  CMAKE_BUILD_TYPE:          Debug

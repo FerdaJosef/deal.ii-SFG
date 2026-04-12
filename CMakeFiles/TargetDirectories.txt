@@ -1,4 +1,4 @@
-/home/josef/deal.II-install/examples/deal.ii-SFG/CMakeFiles/step-3.dir
+/home/josef/deal.II-install/examples/deal.ii-SFG/CMakeFiles/step-3_1D.dir
 /home/josef/deal.II-install/examples/deal.ii-SFG/CMakeFiles/run.dir
 /home/josef/deal.II-install/examples/deal.ii-SFG/CMakeFiles/debug.dir
 /home/josef/deal.II-install/examples/deal.ii-SFG/CMakeFiles/release.dir
