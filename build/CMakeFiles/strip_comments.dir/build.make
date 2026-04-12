@@ -68,7 +68,7 @@ include CMakeFiles/strip_comments.dir/progress.make
 
 CMakeFiles/strip_comments:
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --blue --bold --progress-dir=/home/josef/deal.II-install/examples/deal.ii-SFG/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "strip comments"
-	/usr/bin/perl -pi -e 's#^[ \t]*//.*\n##g;' /home/josef/deal.II-install/examples/deal.ii-SFG/main.cc
+	/usr/bin/perl -pi -e 's#^[ \t]*//.*\n##g;' /home/josef/deal.II-install/examples/deal.ii-SFG/main_1D.cc
 
 strip_comments: CMakeFiles/strip_comments
 strip_comments: CMakeFiles/strip_comments.dir/build.make

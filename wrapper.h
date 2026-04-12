@@ -26,15 +26,15 @@ inline void equation_wrapper(
     Assert(U.size() == n, ExcInternalError());
     Assert(dPsiDu.size() == n, ExcInternalError());
 
-    double U_raw[2];
-    double U0_raw[2];
-    double GradU_raw[2][3] = {};
+    double U_raw[n];
+    double U0_raw[n];
+    double GradU_raw[n][dim] = {};
 
-    double dPsiDu_raw[2];
-    double dPsidGradU_raw[2][3];
-    double dPsiDu2_raw[2][2];
-    double dPsidUdGradU_raw[2][2][3];
-    double dPsidGradU2_raw[2][2][3][3];
+    double dPsiDu_raw[n];
+    double dPsidGradU_raw[n][dim];
+    double dPsiDu2_raw[n][n];
+    double dPsidUdGradU_raw[n][n][dim];
+    double dPsidGradU2_raw[n][n][dim][dim];
 
     // ===== INPUT COPY (VERY CHEAP) =====
     for (unsigned int i = 0; i < n; ++i)

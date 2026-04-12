@@ -1,7 +1,7 @@
 message(
 "###
 #
-#  Project  main  set up with  deal.II-9.7.0  found at
+#  Project  main_1D  set up with  deal.II-9.7.0  found at
 #      /home/josef/deal.II-install
 #
 #  CMAKE_BUILD_TYPE:          Debug
