@@ -1,10 +1,13 @@
 # deal.ii-SFG
 
+Guide for installing deal.II: https://dealii.org/current/readme.html
+
 Right now, there are 3 working test examples (one dimensional code with 2 omegas in main_1D.cc, two dimensional with 3 omegas in main_2D.cc, three dimensional with 2 omegas in main_3D.cc).
 If you want to run main_1D.cc, go into CMakeLists.txt and use: set(TARGET "main_1D")
 
 To run this code, create a folder where you want your output.
-mkdir builder
+
+mkdir builder (for example, I used the existing directory "build")
 
 cd builder
 
