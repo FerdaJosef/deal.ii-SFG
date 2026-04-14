@@ -3,7 +3,7 @@
 
 CMakeFiles/main_2D.dir/main_2D.cc.o
  /home/josef/deal.II-install/examples/deal.ii-SFG/main_2D.cc
- /home/josef/deal.II-install/examples/deal.ii-SFG/AceGen/equation_2_3.h
+ /home/josef/deal.II-install/examples/deal.ii-SFG/AceGen/2D_3omega/equation_2_3.h
  /home/josef/deal.II-install/examples/deal.ii-SFG/wrapper.h
  /home/josef/deal.II-install/include/deal.II/base/aligned_vector.h
  /home/josef/deal.II-install/include/deal.II/base/array_view.h

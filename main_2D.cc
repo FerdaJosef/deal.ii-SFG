@@ -45,7 +45,7 @@
 #include <deal.II/numerics/data_out.h>
 #include <fstream>
 #include <iostream>
-#include "AceGen/1D_2/DoubleDitchC1D.h"
+#include "AceGen/2D_3omega/equation_2_3.h"
 #include "wrapper.h"
 
 #include <math.h>
@@ -170,7 +170,7 @@ Step3<dim, n>::Step3()
   , dof_handler(triangulation)
   , n_q_points(QGauss<dim>(fe.degree + 1).size())
   , time(0.0)
-  , final_time(150.0)
+  , final_time(800.0)
   , delta_t(1e-4)
   , timestep_number(0)
   , max_it(10)
@@ -447,7 +447,7 @@ void Step3<dim, n>::local_assemble_system(
     {
     //const auto &x_q = fe_values.quadrature_point(q_index);
 
-    equation(scratch_data.acegen_scratch,
+    equation<dim, n>(scratch_data.acegen_scratch,
             scratch_data.values_newton[q_index],
             scratch_data.values_old[q_index],
         scratch_data.gradients_newton[q_index],

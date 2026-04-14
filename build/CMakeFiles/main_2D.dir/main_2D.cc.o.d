@@ -2112,7 +2112,7 @@ CMakeFiles/main_2D.dir/main_2D.cc.o: \
  /home/josef/deal.II-install/include/deal.II/hp/fe_values.h \
  /home/josef/deal.II-install/include/deal.II/numerics/data_postprocessor.h \
  /usr/include/c++/13/any \
- /home/josef/deal.II-install/examples/deal.ii-SFG/AceGen/equation_2_3.h \
+ /home/josef/deal.II-install/examples/deal.ii-SFG/AceGen/2D_3omega/equation_2_3.h \
  /home/josef/deal.II-install/examples/deal.ii-SFG/wrapper.h \
  /usr/include/c++/13/math.h \
  /home/josef/deal.II-install/include/deal.II/base/conditional_ostream.h \

@@ -130,7 +130,6 @@ struct AssemblyScratchData
   void time_step_update();
   double determine_step_length() const;
   void output_results() const;
-  void generate_rhs();
   double compute_residual();
 
   Triangulation<dim> triangulation;
@@ -138,7 +137,7 @@ struct AssemblyScratchData
   DoFHandler<dim>    dof_handler;
 
   AffineConstraints<double> zero_constraints;
-  AffineConstraints<double> nonzero_constraints;
+  AffineConstraints<double> constraints;
 
   SparsityPattern      sparsity_pattern;
   SparseMatrix<double> system_matrix;
@@ -182,53 +181,76 @@ Step3<dim, n>::Step3()
   , dt_min(1e-7)
   , newton_iteration(0)
 {}
-
 template <int dim, int n>
 class RightHandSide : public Function<dim>
 {
 public:
-  RightHandSide(double time = 0.0)
-    : Function<dim>(n, time)
-    , period(0.2)
+  RightHandSide(double delta_t)
+    : Function<dim>(n)
+    , delta_t(delta_t)
   {}
 
   virtual double value(const Point<dim>  &p,
-                       const unsigned int component) const override;
-  
-  private:
-    const double period;
-};
+                      const unsigned int component) const override;
 
+private:
+  double delta_t;
+};
 
 template <int dim, int n>
 double RightHandSide<dim, n>::value(const Point<dim> &p, const unsigned int component) const
 {
     (void)p;
     (void)component;
-    //const double t = this->get_time();
 
     static std::mt19937 gen(std::random_device{}());
     static std::normal_distribution<double> dist(0.0,1.0);
 
-    //double sample;
-    //sample = d(gen);
-
-    if (component == 0)
-      return std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
-
-    else if (component == 1)
-      return std::sin(M_PI*p[0])*std::sin(M_PI*p[1])*std::sin(M_PI*p[2]);
-
-  else
     return 0.0;
 
 }
 
 template <int dim, int n>
-class ExactSolution : public Function<dim>
+class RandomRHS
+{
+public:
+  static void generate_rhs(
+    double delta_t,
+    unsigned int n_q_points,
+    const DoFHandler<dim> &dof_handler,
+    std::vector<std::vector<Tensor<1,n>>> &rhs_values);
+};
+
+template <int dim, int n>
+void RandomRHS<dim, n>::generate_rhs(
+  double delta_t,
+  const unsigned int n_q_points,
+  const DoFHandler<dim> &dof_handler,
+  std::vector<std::vector<Tensor<1,n>>> &rhs_values)
+{
+  static thread_local std::mt19937 gen(std::random_device{}());
+  static thread_local std::normal_distribution<double> dist(0.0,1.0);
+
+  for (const auto &cell : dof_handler.active_cell_iterators())
+  {
+    const unsigned int cell_id = cell->active_cell_index();
+
+    for (unsigned int q=0; q<n_q_points; ++q)
+    {
+      for (unsigned int r=0; r < n; r++)
+      {
+        rhs_values[cell_id][q][r] =
+            1e-6*dist(gen)/std::sqrt(delta_t);
+      }
+    }
+  }
+}
+
+template <int dim, int n>
+class InitialCondition : public Function<dim>
 {
   public:
-  ExactSolution(const double time = 0.)
+  InitialCondition(const double time = 0.)
   : Function<dim>(n, time)
   {}
   
@@ -331,27 +353,6 @@ virtual double value(const Point<dim> &p,
 };
 
 template <int dim, int n>
-void Step3<dim, n>::generate_rhs()
-{
-  static std::mt19937 gen(std::random_device{}());
-  static std::normal_distribution<double> dist(0.0,1.0);
-
-  for (const auto &cell : dof_handler.active_cell_iterators())
-  {
-    const unsigned int cell_id = cell->active_cell_index();
-
-    for (unsigned int q=0; q<n_q_points; ++q)
-    {
-      for (unsigned int r=0; r < n; r++)
-      {
-        rhs_values[cell_id][q][r] =
-            0.0*dist(gen)/std::sqrt(delta_t);
-      }
-    }
-  }
-}
-
-template <int dim, int n>
 void Step3<dim, n>::make_grid()
 {
   GridGenerator::hyper_cube(triangulation, 0, 50, true);
@@ -371,22 +372,34 @@ void Step3<dim, n>::setup_system()
             << std::endl;
 
   zero_constraints.clear();
+
   VectorTools::interpolate_boundary_values(dof_handler,
                                             0,
                                             Functions::ZeroFunction<dim>(n),
                                             zero_constraints);
   zero_constraints.close();
 
-  nonzero_constraints.clear();
+  constraints.clear();
 
-  //DoFTools::make_periodicity_constraints(dof_handler, 0, 1, 0, nonzero_constraints); // x-direction
-  //DoFTools::make_periodicity_constraints(dof_handler, 2, 3, 1, nonzero_constraints); // y-direction
-  //DoFTools::make_periodicity_constraints(dof_handler, 4, 5, 2, nonzero_constraints); // z-direction
+  if constexpr (dim == 2)
+  {
+        DoFTools::make_periodicity_constraints(dof_handler, 0, 1, 0, constraints);
+      DoFTools::make_periodicity_constraints(dof_handler, 2, 3, 1, constraints);
+  }
 
-  nonzero_constraints.close();
+
+  if constexpr (dim == 3)
+  {
+      DoFTools::make_periodicity_constraints(dof_handler, 0, 1, 0, constraints);
+      DoFTools::make_periodicity_constraints(dof_handler, 2, 3, 1, constraints);
+      DoFTools::make_periodicity_constraints(dof_handler, 4, 5, 2, constraints);
+  }
+
+
+  constraints.close();
 
   DynamicSparsityPattern dsp(dof_handler.n_dofs());
-  DoFTools::make_sparsity_pattern(dof_handler, dsp, nonzero_constraints, true);
+  DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints, true);
   sparsity_pattern.copy_from(dsp);
 
   system_matrix.reinit(sparsity_pattern);
@@ -396,7 +409,7 @@ void Step3<dim, n>::setup_system()
   oldsolution.reinit(dof_handler.n_dofs());
   newton_iterate.reinit(dof_handler.n_dofs());
 
-  rhs_values.resize(triangulation.n_active_cells(),
+    rhs_values.resize(triangulation.n_active_cells(),
                   std::vector<Tensor<1,n>>(n_q_points));
 }
 
@@ -567,7 +580,7 @@ void Step3<dim, n>::local_assemble_system(
 template <int dim, int n>
 void Step3<dim, n>::copy_local_to_global(const AssemblyCopyData &copy_data)
   {
-    nonzero_constraints.distribute_local_to_global(
+    constraints.distribute_local_to_global(
       copy_data.cell_matrix,
       copy_data.cell_rhs,
       copy_data.local_dof_indices,
@@ -592,13 +605,13 @@ void Step3<dim, n>::solve()
 
   solver.solve(system_matrix, newton_iterate, system_rhs, preconditioner);
 
-  nonzero_constraints.distribute(newton_iterate);
+  constraints.distribute(newton_iterate);
 
   const double alpha = determine_step_length();
 
   solution.add(alpha, newton_iterate);
 
-  nonzero_constraints.distribute(solution);
+  constraints.distribute(solution);
 
   solver_iteration = solver_control.last_step();
 
@@ -638,7 +651,7 @@ void Step3<dim, n>::output_results() const
   data_out.add_data_vector(solution, "solution");
   data_out.build_patches();
 
-  const std::string filename = "results/solution-" + Utilities::int_to_string(timestep_number) + ".vtu";
+  const std::string filename = "1D_results/solution-" + Utilities::int_to_string(timestep_number) + ".vtu";
   std::ofstream output(filename);
   data_out.write(output, DataOutBase::vtu);
 
@@ -646,7 +659,7 @@ void Step3<dim, n>::output_results() const
   times_and_names.push_back(
                 {time, filename});
 
-  std::ofstream pvd_output ("solution1.pvd");
+  std::ofstream pvd_output ("1D_solution1.pvd");
   DataOutBase::write_pvd_record(pvd_output, times_and_names);
 }
 
@@ -661,12 +674,12 @@ void Step3<dim, n>::run()
   std::cout << n_q_points << std::endl;
 
   VectorTools::project(dof_handler,
-                      nonzero_constraints,
+                      constraints,
                       QGauss<dim>(fe.degree + 1),
-                      ExactSolution<dim, n>(0.0),
+                      InitialCondition<dim, n>(0.0),
                       solution);
 
-  nonzero_constraints.distribute(solution);
+  constraints.distribute(solution);
 
   //std::cout << "The difference is " << L2_error << std::endl;
 
@@ -678,7 +691,7 @@ void Step3<dim, n>::run()
     time+=delta_t;
     timestep_number++;
 
-    generate_rhs();
+    RandomRHS<dim, n>::generate_rhs(delta_t, n_q_points, dof_handler, rhs_values);
 
     std::cout<< "Time: " << time << std::endl;
     oldsolution = solution;
