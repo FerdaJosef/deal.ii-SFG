@@ -5,7 +5,9 @@ If you want to run main_1D.cc, go into CMakeLists.txt and use: set(TARGET "main_
 
 To run this code, create a folder where you want your output.
 mkdir builder
+
 cd builder
+
 cmake ..    (if this fails, you need to provide full path to installed deal.II: 
             cmake -DDEAL_II_DIR=/path/to/installed/deal.II ..)
 
