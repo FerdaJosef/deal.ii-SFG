@@ -1,0 +1,10 @@
+/home/josef/deal.II-install/examples/deal.ii-SFG/build/CMakeFiles/main_1D.dir
+/home/josef/deal.II-install/examples/deal.ii-SFG/build/CMakeFiles/run.dir
+/home/josef/deal.II-install/examples/deal.ii-SFG/build/CMakeFiles/debug.dir
+/home/josef/deal.II-install/examples/deal.ii-SFG/build/CMakeFiles/release.dir
+/home/josef/deal.II-install/examples/deal.ii-SFG/build/CMakeFiles/runclean.dir
+/home/josef/deal.II-install/examples/deal.ii-SFG/build/CMakeFiles/distclean.dir
+/home/josef/deal.II-install/examples/deal.ii-SFG/build/CMakeFiles/strip_comments.dir
+/home/josef/deal.II-install/examples/deal.ii-SFG/build/CMakeFiles/info.dir
+/home/josef/deal.II-install/examples/deal.ii-SFG/build/CMakeFiles/edit_cache.dir
+/home/josef/deal.II-install/examples/deal.ii-SFG/build/CMakeFiles/rebuild_cache.dir
