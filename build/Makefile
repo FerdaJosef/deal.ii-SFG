@@ -117,17 +117,17 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named main_1D
+# Target rules for targets named main
 
 # Build rule for target.
-main_1D: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 main_1D
-.PHONY : main_1D
+main: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 main
+.PHONY : main
 
 # fast build rule for target.
-main_1D/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/main_1D.dir/build.make CMakeFiles/main_1D.dir/build
-.PHONY : main_1D/fast
+main/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/build
+.PHONY : main/fast
 
 #=============================================================================
 # Target rules for targets named run
@@ -220,29 +220,29 @@ info/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/info.dir/build.make CMakeFiles/info.dir/build
 .PHONY : info/fast
 
-main_1D.o: main_1D.cc.o
-.PHONY : main_1D.o
+main.o: main.cc.o
+.PHONY : main.o
 
 # target to build an object file
-main_1D.cc.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/main_1D.dir/build.make CMakeFiles/main_1D.dir/main_1D.cc.o
-.PHONY : main_1D.cc.o
+main.cc.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/main.cc.o
+.PHONY : main.cc.o
 
-main_1D.i: main_1D.cc.i
-.PHONY : main_1D.i
+main.i: main.cc.i
+.PHONY : main.i
 
 # target to preprocess a source file
-main_1D.cc.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/main_1D.dir/build.make CMakeFiles/main_1D.dir/main_1D.cc.i
-.PHONY : main_1D.cc.i
+main.cc.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/main.cc.i
+.PHONY : main.cc.i
 
-main_1D.s: main_1D.cc.s
-.PHONY : main_1D.s
+main.s: main.cc.s
+.PHONY : main.s
 
 # target to generate assembly for a file
-main_1D.cc.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/main_1D.dir/build.make CMakeFiles/main_1D.dir/main_1D.cc.s
-.PHONY : main_1D.cc.s
+main.cc.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/main.cc.s
+.PHONY : main.cc.s
 
 # Help Target
 help:
@@ -259,10 +259,10 @@ help:
 	@echo "... run"
 	@echo "... runclean"
 	@echo "... strip_comments"
-	@echo "... main_1D"
-	@echo "... main_1D.o"
-	@echo "... main_1D.i"
-	@echo "... main_1D.s"
+	@echo "... main"
+	@echo "... main.o"
+	@echo "... main.i"
+	@echo "... main.s"
 .PHONY : help
 
 

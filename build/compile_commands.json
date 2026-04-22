@@ -1,8 +1,8 @@
 [
 {
   "directory": "/home/josef/deal.II-install/examples/deal.ii-SFG/build",
-  "command": "/usr/bin/c++ -DBOOST_ATOMIC_DYN_LINK -DBOOST_ATOMIC_NO_LIB -DBOOST_IOSTREAMS_DYN_LINK -DBOOST_IOSTREAMS_NO_LIB -DBOOST_SERIALIZATION_DYN_LINK -DBOOST_SERIALIZATION_NO_LIB -DBOOST_SYSTEM_DYN_LINK -DBOOST_SYSTEM_NO_LIB -DBOOST_THREAD_DYN_LINK -DBOOST_THREAD_NO_LIB -DDEBUG -D_GLIBCXX_ASSERTIONS -isystem /home/josef/deal.II-install/include -isystem /home/josef/deal.II-install/include/deal.II/bundled -isystem /usr/include/suitesparse -isystem /usr/include/opencascade -pedantic -Wall -Wextra -Wmissing-braces -Woverloaded-virtual -Wpointer-arith -Wsign-compare -Wsuggest-override -Wswitch -Wsynth -Wwrite-strings -Wno-placement-new -Wno-literal-suffix -Wno-psabi -Wno-unused-local-typedefs -fopenmp-simd -O0 -ggdb -Wa,--compress-debug-sections -o CMakeFiles/main_1D.dir/main_1D.cc.o -c /home/josef/deal.II-install/examples/deal.ii-SFG/main_1D.cc",
-  "file": "/home/josef/deal.II-install/examples/deal.ii-SFG/main_1D.cc",
-  "output": "CMakeFiles/main_1D.dir/main_1D.cc.o"
+  "command": "/usr/bin/c++ -DBOOST_ATOMIC_DYN_LINK -DBOOST_ATOMIC_NO_LIB -DBOOST_IOSTREAMS_DYN_LINK -DBOOST_IOSTREAMS_NO_LIB -DBOOST_SERIALIZATION_DYN_LINK -DBOOST_SERIALIZATION_NO_LIB -DBOOST_SYSTEM_DYN_LINK -DBOOST_SYSTEM_NO_LIB -DBOOST_THREAD_DYN_LINK -DBOOST_THREAD_NO_LIB -DDEBUG -D_GLIBCXX_ASSERTIONS -I/home/josef/deal.II-install/examples/deal.ii-SFG/source/Model2D_2vars -I/home/josef/deal.II-install/examples/deal.ii-SFG/AceGen -isystem /home/josef/deal.II-install/include -isystem /home/josef/deal.II-install/include/deal.II/bundled -isystem /usr/include/suitesparse -isystem /usr/include/opencascade -pedantic -Wall -Wextra -Wmissing-braces -Woverloaded-virtual -Wpointer-arith -Wsign-compare -Wsuggest-override -Wswitch -Wsynth -Wwrite-strings -Wno-placement-new -Wno-literal-suffix -Wno-psabi -Wno-unused-local-typedefs -fopenmp-simd -O0 -ggdb -Wa,--compress-debug-sections -o CMakeFiles/main.dir/main.cc.o -c /home/josef/deal.II-install/examples/deal.ii-SFG/main.cc",
+  "file": "/home/josef/deal.II-install/examples/deal.ii-SFG/main.cc",
+  "output": "CMakeFiles/main.dir/main.cc.o"
 }
 ]

@@ -126,11 +126,12 @@ struct AssemblyScratchData
   void copy_local_to_global(const AssemblyCopyData &copy_data);
 
   void solve();
-  void time_step_update();
+  bool time_step_update();
   double determine_step_length() const;
   void output_results() const;
   void generate_rhs();
   double compute_residual();
+  void make_timestep();
 
   Triangulation<dim> triangulation;
   const FESystem<dim>    fe;
@@ -385,6 +386,7 @@ Step3<dim, n>::AssemblyScratchData::AssemblyScratchData(
     , values_old(scratch_data.values_old)
     , gradients_newton(scratch_data.gradients_newton)
     , acegen_scratch(scratch_data.acegen_scratch)
+    
     , dPsiDu(scratch_data.dPsiDu)
     , dPsidGradU(scratch_data.dPsidGradU)
     , dPsiDu2(scratch_data.dPsiDu2)
@@ -553,8 +555,37 @@ void Step3<dim, n>::solve()
 }
 
 template <int dim, int n>
-void Step3<dim, n>::time_step_update()
+bool Step3<dim, n>::time_step_update()
 {
+    if (newton_iteration == max_it)
+    {
+        std::cout << "Newton failed. Reducing time step." << std::endl;
+        solution = oldsolution;
+
+        time -= delta_t;
+        timestep_number--;
+
+        delta_t *= 0.5;
+        if (delta_t < dt_min)
+            throw std::runtime_error("Time step too small!");
+
+        return false;
+    }
+
+    if (solver_iteration > 250) {
+        std::cout << "GMRES failed. Reducing time step." << std::endl;
+        solution = oldsolution;
+
+        time -= delta_t;
+        timestep_number--;
+
+        delta_t *= 0.5;
+        if (delta_t < dt_min)
+            throw std::runtime_error("Solver failed!");
+
+        return false;
+    }
+
     if (newton_iteration <= optimal_it) {
       // self.dt.assign(min(dt_max, float(self.dt) * min(1.6, optimal_it / (iterations + 0.001))));
         delta_t = std::min(dt_max, delta_t*std::min(max_multiplier, double(optimal_it/(newton_iteration + 0.001))));
@@ -571,7 +602,12 @@ void Step3<dim, n>::time_step_update()
     else if (delta_t < 1e-6) {
         throw std::invalid_argument("Time step too small!");
     }
+
+    std::cout << newton_iteration << std::endl;
+    
     std::cout << "Our time step is " << delta_t << std::endl;
+
+    return true;
 }
 
 template <int dim, int n>
@@ -596,6 +632,32 @@ void Step3<dim, n>::output_results() const
   DataOutBase::write_pvd_record(pvd_output, times_and_names);
 }
 
+template<int dim, int n>
+void Step3<dim, n>::make_timestep()
+{
+    time+=delta_t;
+    timestep_number++;
+
+    generate_rhs();
+
+    std::cout<< "Time: " << time << std::endl;
+    oldsolution = solution;
+    newton_iteration = 0;
+    double residual_norm = 1.0;
+    while (residual_norm > 1e-10 && newton_iteration < max_it)
+    {
+      //newton_iterate = 0.0;
+      assemble_system();
+      residual_norm = system_rhs.l2_norm();
+
+      std::cout << "The norm of our solution is: " << residual_norm << std::endl;
+
+      solve();
+
+      //std::cout << "  Residual: " << residual_norm << std::endl;
+      newton_iteration++;
+    }
+}
 
 template <int dim, int n>
 void Step3<dim, n>::run()
@@ -621,60 +683,12 @@ void Step3<dim, n>::run()
   std::cout << time << std::endl;
   while (time < final_time)
   {
-    time+=delta_t;
-    timestep_number++;
+    make_timestep();
 
-    generate_rhs();
-
-    std::cout<< "Time: " << time << std::endl;
-    oldsolution = solution;
-    newton_iteration = 0;
-    double residual_norm = 1.0;
-    while (residual_norm > 1e-10 && newton_iteration < max_it)
-    {
-      //newton_iterate = 0.0;
-      assemble_system();
-      residual_norm = system_rhs.l2_norm();
-
-      std::cout << "The norm of our solution is: " << residual_norm << std::endl;
-
-      solve();
-
-      //std::cout << "  Residual: " << residual_norm << std::endl;
-      newton_iteration++;
-    }
-
-    if (newton_iteration == max_it)
-    {
-        std::cout << "Newton failed. Reducing time step." << std::endl;
-        solution = oldsolution;
-
-        time -= delta_t;
-        timestep_number--;
-
-        delta_t *= 0.5;
-        if (delta_t < dt_min)
-            throw std::runtime_error("Time step too small!");
-
-        continue;
-    }
-
-    if (solver_iteration > 250) {
-            std::cout << "GMRES failed. Reducing time step." << std::endl;
-        solution = oldsolution;
-
-        time -= delta_t;
-        timestep_number--;
-
-        delta_t *= 0.5;
-        if (delta_t < dt_min)
-            throw std::runtime_error("Solver failed!");
-
-        continue;
-    }
-
-    std::cout << newton_iteration << std::endl;
-    time_step_update();
+    bool value = time_step_update();
+    if (!value)
+      continue;
+  
     output_results();
   }
 

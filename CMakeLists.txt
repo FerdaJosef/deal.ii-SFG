@@ -2,8 +2,16 @@
 #  CMake script for the step-3 tutorial program:
 ##
 
+set(MODEL_DIR "${CMAKE_SOURCE_DIR}/source/Model2D_2vars")
+
+include_directories(
+    #${CMAKE_SOURCE_DIR}/include
+    ${MODEL_DIR}
+    ${CMAKE_SOURCE_DIR}/AceGen
+)
+
 # Set the name of the project and target:
-set(TARGET "main_1D")
+set(TARGET "main")
 
 # Declare all source files the target consists of. Here, this is only
 # the one step-X.cc file, but as you expand your project you may wish
@@ -37,3 +45,5 @@ endif()
 deal_ii_initialize_cached_variables()
 project(${TARGET})
 deal_ii_invoke_autopilot()
+
+include_directories(${CMAKE_SOURCE_DIR}/source/Model2D_2vars)
