@@ -1,60 +1,146 @@
-deal.II-SFG Simulation Framework
-Technical Documentation & Implementation Guide
+# Project Setup and Usage Guide
 
-This framework provides a structured pipeline for running stochastic phase-field simulations using deal.II and AceGen.
-🚀 Setup & Execution Pipeline
-Step I: Repository Initialization
+This guide explains how to set up, configure, and run the project with a custom model.
 
-Clone the repository and enter the project root:
-Bash
+---
 
-git clone <repository-url>
-cd deal.ii-SFG
+## 1. Clone the repository
 
-Step II: Model Customization
+```bash
+git clone <your-repo-url>
+cd <your-repo>
+```
 
-The model logic is decentralized into specific source files to optimize compilation times.
+---
 
-    Initial Conditions: Modify source/Model/InitialValues.cc.
+## 2. Create / Configure your model
 
-    Right-Hand Side (RHS): Define source terms and noise in source/Model/RandomField.cc.
+Inside the `source/Model/...` directory:
 
-    Templates: You MUST append the explicit template instantiation at the end of each .cc file (InitialValues.cc, RandomField.cc, and model.cc):
-    C++
+* Define or modify:
 
-    template class RandomField<1, 2>;
+  * **Right-hand side (RHS)**
+  * **Initial conditions**
 
-Step III: Symbolic Differentiation (AceGen)
+* Ensure that each `.cc` file containing template code ends with the correct explicit instantiation, for example:
 
-The framework utilizes AceGen for automated residual and Jacobian generation.
+```cpp
+template class Step3<2,2>;
+```
 
-    Place AceGen C-output in source/Model/AceGen/.
+Adjust `<dim, n>` according to your model.
 
-    Run the bridge script to format the code for deal.II:
-    Bash
+---
 
-    python3 script.py source/Model/AceGen/output.c
+## 3. Add AceGen output
 
-Step IV: Configuration
+1. Place your AceGen-generated file into:
 
-    main.cc: Include the correct model header and ensure the solver is instantiated with the correct templates.
+```
+source/Model/.../AceGen/
+```
 
-    CMakeLists.txt: Verify that the TARGET_SRC list includes all relevant .cc files.
+2. Run the postprocessing script:
 
-Step V: Build & Run
+```bash
+python3 script.py source/Model/.../AceGen/output.c
+```
 
-Navigate to the build directory (create it if it doesn't exist) and compile:
-Bash
+This will:
 
-mkdir -p build && cd build
+* remove incompatible includes (`sms.h`)
+* replace unsupported syntax (e.g. `Power`)
+* generate a usable `equation.h`
+
+---
+
+## 4. Update `main.cc`
+
+Modify `main.cc` to use the correct model and template parameters:
+
+```cpp
+Step3<dim, n> simulation;
+simulation.run();
+```
+
+Make sure `<dim, n>` matches:
+
+* spatial dimension
+* number of variables in your model
+
+---
+
+## 5. Update `CMakeLists.txt`
+
+Ensure the correct include paths are set, especially for:
+
+* your model directory
+* AceGen-generated headers
+
+Example:
+
+```cmake
+include_directories(source/Model/YourModel)
+```
+
+If deal.II is not found automatically, you may need:
+
+```bash
+cmake -DDEAL_II_DIR=/path/to/deal.II ..
+```
+
+---
+
+## 6. Build the project
+
+Create and enter a build directory:
+
+```bash
+mkdir build
+cd build
+```
+
+Run CMake:
+
+```bash
 cmake ..
-make -j$(nproc)
+```
+
+Then compile:
+
+```bash
+make
+```
+
+---
+
+## 7. Run the program
+
+```bash
 make run
+```
 
-💡 Technical Notes
+---
 
-    Compilation Optimization: The separation of RandomField.cc and InitialValues.cc ensures that changes to the core FEM algorithm in model.cc do not require re-generating the stochastic noise logic or initial state, significantly reducing iterative development time.
+## Notes
 
-    Troubleshooting: If the linker throws an undefined reference error, double-check that the template class line at the end of your .cc files matches the dim and n used in your simulation.
+* Output files are written to the `results/` directory (created automatically if needed).
+* If compilation fails due to missing C++17 features, ensure your compiler and CMake configuration use:
 
-    Execution: If the program hangs at 100% CPU without output, verify the solver convergence tolerances and the scaling of the random field amplitude.
+```cmake
+set(CMAKE_CXX_STANDARD 17)
+```
+
+* When switching models, you typically need to:
+
+  * update the AceGen file
+  * rerun the Python script
+  * rebuild the project
+
+---
+
+## Summary Workflow
+
+```text
+Clone → Configure Model → Add AceGen → Run Script → Update main/CMake → Build → Run
+```
