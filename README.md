@@ -145,7 +145,7 @@ make run
 
 ## Notes
 
-* Output files are written to the `results/` directory (created automatically if needed).
+* Output files are written to the `results/` directory (you can choose the name of the folder in double_ditch.prm).
 * If compilation fails due to missing C++17 features, ensure your compiler and CMake configuration use:
 
 ```cmake
