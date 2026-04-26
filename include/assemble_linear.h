@@ -1,3 +1,5 @@
+#include "model.h"
+
 template <int dim, int n>
 void Step3<dim, n>::assemble_system()
 {

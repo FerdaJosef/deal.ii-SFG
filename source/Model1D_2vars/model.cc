@@ -33,4 +33,4 @@ Step3<dim, n>::Step3(ParameterHandler &param)
 
 }
 
-template class Step3<2,3>;
+template class Step3<1,2>;

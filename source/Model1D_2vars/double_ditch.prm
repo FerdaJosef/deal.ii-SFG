@@ -1,0 +1,55 @@
+subsection General information
+  # Physical dimension of our problem
+  set Dimension     = 1
+
+  # Number of variables (number of omegas in our case)
+  set Number of variables   = 2
+end
+
+subsection Mesh & geometry parameters
+  # The left boundary of our domain
+  set Mesh left limit       = -25.0
+
+  # The right boundary of our domain
+  set Mesh right limit      = 25.0
+  
+  # Number of global mesh refinement steps
+  set Number of refinements = 11
+end
+
+subsection Temporal parameters
+  # The time at which the simulation starts
+  set Initial time            = 0.0
+
+  # The very first time step
+  set Initial time step       = 1e-5
+
+  # Simulation will stop when this time is reached
+  set Final time              = 800.0
+
+  # Starting index for the time step count (usually 0)
+  set Time step number        = 0
+
+  # The hard ceiling for the time step size
+  set Max time step       = 5.0
+
+  # The hard floor for the time step size
+  set Min time step       = 1e-8
+
+  # If Newton converges fast, multiply dt by this
+  set Max multiplier          = 2.0
+
+  # If Newton struggles, multiply dt by this
+  set Min multiplier          = 0.5
+
+  # Target number of iterations for a 'healthy' step
+  set Optimal iterations      = 6
+
+  # Maximum iterations allowed before cutting dt
+  set Max iterations = 10
+end
+
+subsection Output parameters
+  set Output filename = results/solution
+
+end

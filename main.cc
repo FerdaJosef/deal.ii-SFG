@@ -48,20 +48,53 @@
 #include <deal.II/base/work_stream.h>
 #include <deal.II/base/multithread_info.h>
 
-#include <random>
+// Parameter handling
 
-#include "source/Model2D_3vars/"
-#include "AceGen/2D_3omega/equation_2_3.h"
-#include "wrapper.h"
+#include <deal.II/base/parameter_handler.h>
+
+#include <random>
+#include <filesystem>
+
+//#include "AceGen/2D_3omega/equation_2_3.h"
+
+#include "InitialValues.h"
+#include "model.h"
+#include "output_results.h"
+#include "Random_RHS.h"
+#include "grid_and_boundary.h"
+#include "assemble_linear.h"
+#include "scratch_data.h"
+#include "time_stepping.h"
+#include "run.h"
+#include "solve.h"
+#include "parameters.h"
+
 
 int main()
 {
     using namespace dealii;
+
+    std::filesystem::create_directories("results");
+
     try
       {
         MultithreadInfo::set_thread_limit();
+
+        ParameterHandler prm;
+        ParameterReader  param(prm);
+        param.read_parameters("double_ditch.prm");
+
+        prm.enter_subsection("Output parameters");
+          std::string out_file = prm.get("Output filename"); 
+        prm.leave_subsection();
+
+        std::filesystem::path p(out_file);
+        if (p.has_parent_path()) 
+        {
+            std::filesystem::create_directories(p.parent_path());
+        }
   
-        Step3<1,2> double_ditch;
+        Step3<1, 2> double_ditch(prm);
         double_ditch.run();
       }
     catch (std::exception &exc)

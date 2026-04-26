@@ -1,4 +1,4 @@
-#include "source/Model2D_2vars/model.h"
+#include "model.h"
 
 template <int dim, int n>
 Step3<dim, n>::AssemblyScratchData::AssemblyScratchData(const FiniteElement<dim> &fe)
@@ -48,14 +48,3 @@ Step3<dim, n>::AssemblyScratchData::AssemblyScratchData(
     , dPsidUdGradU(scratch_data.dPsidUdGradU)
     , dPsidGradU2(scratch_data.dPsidGradU2)
   {}
-
-  template <int dim, int n>
-void Step3<dim, n>::copy_local_to_global(const AssemblyCopyData &copy_data)
-  {
-    nonzero_constraints.distribute_local_to_global(
-      copy_data.cell_matrix,
-      copy_data.cell_rhs,
-      copy_data.local_dof_indices,
-      system_matrix,
-      system_rhs);
-  }

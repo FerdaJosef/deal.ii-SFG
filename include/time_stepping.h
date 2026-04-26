@@ -1,3 +1,5 @@
+#include "model.h"
+
 template <int dim, int n>
 bool Step3<dim, n>::time_step_update()
 {

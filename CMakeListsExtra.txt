@@ -2,9 +2,9 @@
 #  CMake script for the step-3 tutorial program:
 ##
 
-set(MODEL_DIR "${CMAKE_SOURCE_DIR}/source/Model1D_2vars")
+set(MODEL_DIR "${CMAKE_SOURCE_DIR}/source/Model3D_2vars")
 
-file(COPY ${MODEL_DIR}/double_ditch.prm
+file(COPY ${CMAKE_SOURCE_DIR}/double_ditch.prm
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 include_directories(
@@ -30,13 +30,11 @@ set(TARGET "main")
 # in the "CMake in user projects" page accessible from the "User info"
 # page of the documentation.
 set(TARGET_SRC
-    ${MODEL_DIR}/model.cc
-    ${MODEL_DIR}/InitialValues.cc
+    source/Model2D_3vars/model.cc
     main.cc
     )
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 
 # Usually, you will not need to modify anything beyond this point...
 
@@ -57,3 +55,4 @@ deal_ii_initialize_cached_variables()
 project(${TARGET})
 deal_ii_invoke_autopilot()
 
+include_directories(${CMAKE_SOURCE_DIR}/source/Model2D_2vars)

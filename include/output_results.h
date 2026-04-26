@@ -1,4 +1,4 @@
-#include "source/Model2D_2vars/model.h"
+#include "model.h"
 
 template <int dim, int n>
 void Step3<dim, n>::output_results() const
@@ -7,10 +7,18 @@ void Step3<dim, n>::output_results() const
 
   DataOut<dim> data_out;
   data_out.attach_dof_handler(dof_handler);
+
+  prm.enter_subsection("Output parameters");
+ 
+  const std::string output_filename = prm.get("Output filename");
+  data_out.parse_parameters(prm);
+ 
+  prm.leave_subsection();
+
   data_out.add_data_vector(solution, "solution");
   data_out.build_patches();
 
-  const std::string filename = "results/solution-" + Utilities::int_to_string(timestep_number) + ".vtu";
+  const std::string filename = output_filename + Utilities::int_to_string(timestep_number) + ".vtu";
   std::ofstream output(filename);
   data_out.write(output, DataOutBase::vtu);
 
@@ -18,6 +26,6 @@ void Step3<dim, n>::output_results() const
   times_and_names.push_back(
                 {time, filename});
 
-  std::ofstream pvd_output ("solution1.pvd");
+  std::ofstream pvd_output (output_filename);
   DataOutBase::write_pvd_record(pvd_output, times_and_names);
 }
