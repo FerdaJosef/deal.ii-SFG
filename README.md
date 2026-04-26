@@ -15,14 +15,40 @@ cd <your-repo>
 
 ## 2. Create / Configure your model
 
-Inside the `source/Model/...` directory:
+We put models into the folder "source". We already have three models in this folder:
+* Model1D_2vars - 1 dimensional code with 2 omega variants
+* Model2D_3vars - 2 dimensional code with 3 omega variants,
+* Model3D_2vars - 3 dimensional with 2 omega variants.
 
-* Define or modify:
+Our program has three main classes: Step3 (this includes assembly, timestepping, solving, ... ). InitialValues (self-explanatory) and RandomField (for generating a random right hand side). 
+Each model folder includes the following:
+* InitialValues.cc
+* RandomField.cc
+* model.cc
+* double_ditch.prm
+* AceGen folder
 
-  * **Right-hand side (RHS)**
-  * **Initial conditions**
+Some of these models are explored in the article "Multiwell phase-field model for arbitrarily strong total-spreading case" by J. Kozlík, K. Tůma, et. al.
 
-* Ensure that each `.cc` file containing template code ends with the correct explicit instantiation, for example:
+If we want to create a custom model, we can do:
+```
+mkdir source/CustomModel
+```
+
+We may copy contents of a previous model into our new one and proceed to make changes from there:
+```
+cp -a source/Model3D_2vars/. source/CustomModel
+```
+
+* We will mostly want to change the following:
+
+  * Right-hand side (RHS)
+  * Initial conditions
+  * Parameters of our problem (initial time step, final time, number of global refinements, ...).
+    We can find parameters in the double_ditch.prm file. The structure of this file can be changed, but corresponding
+    changes have to be made to "include/parameters.h".
+
+* Ensure that each `.cc` file containing template code ends with the correct explicit instantiation, for example if we want a 2D problem with 2 omega variants:
 
 ```cpp
 template class Step3<2,2>;
@@ -80,13 +106,7 @@ Ensure the correct include paths are set, especially for:
 Example:
 
 ```cmake
-include_directories(source/Model/YourModel)
-```
-
-If deal.II is not found automatically, you may need:
-
-```bash
-cmake -DDEAL_II_DIR=/path/to/deal.II ..
+set(MODEL_DIR "${CMAKE_SOURCE_DIR}/source/CustomModel")
 ```
 
 ---
@@ -104,6 +124,12 @@ Run CMake:
 
 ```bash
 cmake ..
+```
+
+If this does not work, we have to specify a path to where we installed deal.II.
+
+```bash
+cmake -DDEAL_II_DIR=/path/to/deal.II ..
 ```
 
 Then compile:
