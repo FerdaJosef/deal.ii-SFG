@@ -57,6 +57,8 @@
  
 #include <deal.II/base/parameter_handler.h>
 
+#include "RandomField.h"
+
 using namespace dealii;
 
 template <int dim, int n>
@@ -69,6 +71,8 @@ public:
 
 
 private:
+
+  RandomField<dim, n> random_field;
 
   ParameterHandler &prm;
 

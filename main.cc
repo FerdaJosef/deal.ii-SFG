@@ -59,14 +59,6 @@
 
 #include "InitialValues.h"
 #include "model.h"
-#include "output_results.h"
-#include "Random_RHS.h"
-#include "grid_and_boundary.h"
-#include "assemble_linear.h"
-#include "scratch_data.h"
-#include "time_stepping.h"
-#include "run.h"
-#include "solve.h"
 #include "parameters.h"
 
 
@@ -74,14 +66,14 @@ int main()
 {
     using namespace dealii;
 
-    std::filesystem::create_directories("results");
-
     try
       {
         MultithreadInfo::set_thread_limit();
 
         ParameterHandler prm;
         ParameterReader  param(prm);
+
+
         param.read_parameters("double_ditch.prm");
 
         prm.enter_subsection("Output parameters");
@@ -94,7 +86,7 @@ int main()
             std::filesystem::create_directories(p.parent_path());
         }
   
-        Step3<1, 2> double_ditch(prm);
+        Step3<3, 2> double_ditch(prm);
         double_ditch.run();
       }
     catch (std::exception &exc)

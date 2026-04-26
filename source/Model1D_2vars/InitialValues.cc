@@ -3,7 +3,7 @@
 #include <cmath>
 
 template <int dim, int n>
-double ExactSolution<dim, n>::value(const Point<dim> &p,
+double InitialValues<dim, n>::value(const Point<dim> &p,
                                     const unsigned int component) const
 {
  static std::mt19937 gen(std::random_device{}());
@@ -101,6 +101,6 @@ static std::normal_distribution<double> dist(0.0, 1.0);
 }
 
 // !!! DŮLEŽITÉ: Explicitní instanciace !!!
-template class ExactSolution<1, 2>;
+template class InitialValues<1, 2>;
 // Přidej další podle potřeby v model.cc 
  

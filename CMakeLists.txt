@@ -2,7 +2,7 @@
 #  CMake script for the step-3 tutorial program:
 ##
 
-set(MODEL_DIR "${CMAKE_SOURCE_DIR}/source/Model1D_2vars")
+set(MODEL_DIR "${CMAKE_SOURCE_DIR}/source/Model3D_2vars")
 
 file(COPY ${MODEL_DIR}/double_ditch.prm
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
@@ -32,6 +32,7 @@ set(TARGET "main")
 set(TARGET_SRC
     ${MODEL_DIR}/model.cc
     ${MODEL_DIR}/InitialValues.cc
+    ${MODEL_DIR}/RandomField.cc
     main.cc
     )
 

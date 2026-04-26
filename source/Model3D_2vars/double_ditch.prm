@@ -50,6 +50,6 @@ subsection Temporal parameters
 end
 
 subsection Output parameters
-  set Output filename = results/solution
+  set Output filename = output/solution
 
 end
