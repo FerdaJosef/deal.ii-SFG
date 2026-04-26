@@ -32,7 +32,6 @@
 #include <fstream>
 #include <iostream>
 #include "equation.h"
-#include "wrapper.h"
 
 #include <math.h>
 #include <deal.II/base/conditional_ostream.h>
