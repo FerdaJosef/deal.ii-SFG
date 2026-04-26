@@ -6,11 +6,6 @@ This guide explains how to set up, configure, and run the project with a custom 
 
 ## 1. Clone the repository
 
-```bash
-git clone <your-repo-url>
-cd <your-repo>
-```
-
 ---
 
 ## 2. Create / Configure your model
