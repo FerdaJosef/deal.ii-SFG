@@ -1,6 +1,22 @@
+/**
+ * @file model.cc
+ * @brief Implementation of the Step3 class for Stochastic Phase-Field modeling.
+ * * This file contains the core logic for a parallelized FEM solver using deal.II.
+ * Key features include:
+ * - WorkStream pattern for thread-safe parallel assembly.
+ * - Newton scheme for non-linear residuals.
+ * - Adaptive time-stepping based on solver convergence.
+ * - Integration with AceGen-generated symbolic residuals and Jacobians.
+ */
+
 #include "model.h"
 #include "InitialValues.h"
 #include "RandomField.h"
+
+/**
+ * @brief Constructor: Initializes solver parameters from a ParameterHandler object.
+ * Maps subsections from the .prm file to internal member variables.
+ */
 
 template <int dim, int n>
 Step3<dim, n>::Step3(ParameterHandler &param)
@@ -35,6 +51,10 @@ Step3<dim, n>::Step3(ParameterHandler &param)
 
 };
 
+/**
+ * @brief Generates the domain geometry and performs initial global refinements.
+ */
+
 template <int dim, int n>
 void Step3<dim, n>::make_grid()
 {
@@ -47,6 +67,11 @@ void Step3<dim, n>::make_grid()
             << std::endl;
 }
 
+/**
+ * @brief Sets up DoFs, periodicity constraints, and distributed sparsity patterns.
+ * Implements dim-dependent periodicity for 2D and 3D domains.
+ */
+
 template <int dim, int n>
 void Step3<dim, n>::setup_system()
 {
@@ -55,7 +80,7 @@ void Step3<dim, n>::setup_system()
             << std::endl;
 
   constraints.clear();
-
+  // Apply periodic boundary conditions based on dimension, Neumann homogeneous conditions for 1D
   if constexpr (dim == 2)
   {
     DoFTools::make_periodicity_constraints(dof_handler, 0, 1, 0, constraints);
@@ -82,9 +107,14 @@ void Step3<dim, n>::setup_system()
   oldsolution.reinit(dof_handler.n_dofs());
   newton_iterate.reinit(dof_handler.n_dofs());
 
+  // Initialize Right-Hand Side (Random Field) storage
   random_field.reinit(triangulation.n_active_cells(), n_q_points);
 };
 
+/**
+ * @brief ScratchData constructor for WorkStream.
+ * Pre-allocates temporary buffers (tensors/vectors) to avoid re-allocation during cell assembly.
+ */
 template <int dim, int n>
 Step3<dim, n>::AssemblyScratchData::AssemblyScratchData(const FiniteElement<dim> &fe)
   :
@@ -134,7 +164,11 @@ Step3<dim, n>::AssemblyScratchData::AssemblyScratchData(
     , dPsidGradU2(scratch_data.dPsidGradU2)
   {}
 
-  template <int dim, int n>
+  /**
+ * @brief Orchestrates the parallel assembly of the Jacobian and Residual.
+ */
+
+template <int dim, int n>
 void Step3<dim, n>::assemble_system()
 {
   system_matrix = 0;
@@ -149,6 +183,10 @@ void Step3<dim, n>::assemble_system()
                   AssemblyCopyData());
 }
 
+/**
+ * @brief Local assembly routine called by WorkStream.
+ * Integrates AceGen symbolic expressions with finite element basis functions.
+ */
 template <int dim, int n>
 void Step3<dim, n>::local_assemble_system(
         const typename DoFHandler<dim>::active_cell_iterator &cell,
@@ -251,6 +289,9 @@ void Step3<dim, n>::local_assemble_system(
   cell->get_dof_indices(copy_data.local_dof_indices);
 }
 
+/**
+ * @brief Thread-safe transfer of cell-local matrices to the global system matrix.
+ */
 template <int dim, int n>
 void Step3<dim, n>::copy_local_to_global(const AssemblyCopyData &copy_data)
   {
@@ -262,11 +303,21 @@ void Step3<dim, n>::copy_local_to_global(const AssemblyCopyData &copy_data)
       system_rhs);
   }
 
+  /**
+ * @brief Determine the step length for the Newton update.
+ */
+
 template <int dim, int n>
 double Step3<dim, n>::determine_step_length() const
 {
   return 1.0;
 }
+
+
+/**
+ * @brief Solves the linear system using GMRES with a Jacobi preconditioner.
+ * Updates the solution using a Newton update step.
+ */
 
 template <int dim, int n>
 void Step3<dim, n>::solve()
@@ -292,6 +343,12 @@ void Step3<dim, n>::solve()
   std::cout << solver_iteration
             << " iterations needed to obtain convergence." << std::endl;
 }
+
+/**
+ * @brief Implements an adaptive time-stepping controller.
+ * Increases/decreases delta_t based on the number of Newton iterations required.
+ * @return bool True if time-step was successful, false if a retry is required.
+ */
 
 template <int dim, int n>
 bool Step3<dim, n>::time_step_update()
@@ -349,6 +406,9 @@ bool Step3<dim, n>::time_step_update()
     return true;
 }
 
+/**
+ * @brief Executes a single time step, including non-linear Newton iterations.
+ */
 template<int dim, int n>
 void Step3<dim, n>::make_timestep()
 {
@@ -407,7 +467,9 @@ void Step3<dim, n>::output_results() const
 }
 
 template <int dim, int n>
-
+/**
+ * @brief Top-level execution control for the solver.
+ */
 void Step3<dim, n>::run()
 {
 
