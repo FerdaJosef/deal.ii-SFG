@@ -409,10 +409,10 @@ bool Step3<dim, n>::time_step_update()
 /**
  * @brief Executes a single time step, including non-linear Newton iterations.
  */
-template<int dim, int n>
+template <int dim, int n>
 void Step3<dim, n>::make_timestep()
 {
-    random_field.generate(dof_handler.n_dofs(), delta_t, 1e-5, triangulation.n_active_cells());
+    random_field.generate(triangulation.n_active_cells(), n_q_points, delta_t, 1e-5);
 
     time+=delta_t;
     timestep_number++;
@@ -462,7 +462,7 @@ void Step3<dim, n>::output_results() const
   times_and_names.push_back(
                 {time, filename});
 
-  std::ofstream pvd_output (output_filename);
+  std::ofstream pvd_output (output_filename + ".pvd");
   DataOutBase::write_pvd_record(pvd_output, times_and_names);
 }
 

@@ -2,7 +2,7 @@
 #  CMake script for the step-3 tutorial program:
 ##
 
-set(MODEL_DIR "${CMAKE_SOURCE_DIR}/source/Model3D_2vars")
+set(MODEL_DIR "${CMAKE_SOURCE_DIR}/source/Model2D_3vars")
 
 file(COPY ${MODEL_DIR}/double_ditch.prm
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

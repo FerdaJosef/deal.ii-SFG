@@ -11,7 +11,7 @@ double InitialValues<dim, n>::value(const Point<dim> &p,
 
   double noise = dist(gen) * 1e-6;
 
-  return 0.0*noise;
+  return noise;
 }
 
 // !!! DŮLEŽITÉ: Explicitní instanciace !!!
