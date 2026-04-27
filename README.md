@@ -121,6 +121,8 @@ Run CMake:
 cmake ..
 ```
 
+When we change parameters, we have to rerun cmake, which will take a couple of seconds max and then we can rerun. There is a better way to do this and it will be added later.
+
 If this does not work, we have to specify a path to where we installed deal.II.
 
 ```bash
