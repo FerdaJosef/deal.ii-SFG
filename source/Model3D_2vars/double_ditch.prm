@@ -25,7 +25,7 @@ subsection Temporal parameters
   set Initial time step       = 1e-5
 
   # Simulation will stop when this time is reached
-  set Final time              = 800.0
+  set Final time              = 5e-5
 
   # Starting index for the time step count (usually 0)
   set Time step number        = 0
@@ -47,6 +47,10 @@ subsection Temporal parameters
 
   # Maximum iterations allowed before cutting dt
   set Max iterations = 10
+end
+
+subsection Solver
+  set Linear system error = 1e-9
 end
 
 subsection Output parameters

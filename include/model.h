@@ -1,62 +1,56 @@
 #ifndef DOUBLE_DITCH
 #define DOUBLE_DITCH
 
-#include <deal.II/grid/tria.h>
-#include <deal.II/dofs/dof_handler.h>
-#include <deal.II/grid/grid_generator.h>
+// --- Mesh & Geometry ---
+#include <deal.II/grid/tria.h>                // Basic triangulation classes
+#include <deal.II/grid/grid_generator.h>      // Standard shapes (hyper_cube, etc.)
+#include <deal.II/grid/grid_tools.h>          // Transformations, periodicity, finding cells
 
-#include <deal.II/fe/fe_q.h>
+// --- Degrees of Freedom (DoFs) ---
+#include <deal.II/dofs/dof_handler.h>         // Manages DoF distribution on the mesh
+#include <deal.II/dofs/dof_tools.h>           // High-level DoF operations (constraints, etc.)
+#include <deal.II/dofs/dof_renumbering.h>     // Reordering DoFs (Cuthill-McKee, etc.) for speed
 
-#include <deal.II/dofs/dof_tools.h>
+// --- Finite Elements & Quadrature ---
+#include <deal.II/fe/fe_q.h>                  // Lagrange finite elements
+#include <deal.II/fe/fe_system.h>             // Composing vector-valued elements (n-variables)
+#include <deal.II/fe/fe_values.h>             // Shape function evaluation at quadrature points
+#include <deal.II/fe/mapping_q.h>             // Maps reference cell to real cell geometry
+#include <deal.II/base/quadrature_lib.h>      // Standard Gauss-Legendre quadrature rules
 
-#include <deal.II/fe/fe_values.h>
-#include <deal.II/base/quadrature_lib.h>
+// --- Linear Algebra (LAC) ---
+#include <deal.II/lac/vector.h>               // Simple vector class
+#include <deal.II/lac/full_matrix.h>          // Dense matrices (for local assembly)
+#include <deal.II/lac/sparse_matrix.h>        // Compressed Row Storage (for global system)
+#include <deal.II/lac/dynamic_sparsity_pattern.h> // Building the sparse matrix structure
+#include <deal.II/lac/affine_constraints.h>   // Handling Dirichlet, Periodic, and Hanging node constraints
 
-#include <deal.II/base/function.h>
-#include <deal.II/numerics/vector_tools.h>
-#include <deal.II/numerics/matrix_tools.h>
+// --- Linear Solvers & Preconditioners ---
+#include <deal.II/lac/solver_gmres.h>         // GMRES iterative solver
+#include <deal.II/lac/solver_cg.h>            // Conjugate Gradient solver
+#include <deal.II/lac/precondition.h>         // Basic preconditioners (Jacobi, etc.)
 
-#include <deal.II/lac/vector.h>
-#include <deal.II/lac/full_matrix.h>
-#include <deal.II/lac/sparse_matrix.h>
-#include <deal.II/lac/dynamic_sparsity_pattern.h>
-#include <deal.II/lac/solver_gmres.h>
-#include <deal.II/lac/solver_cg.h>
-#include <deal.II/lac/precondition.h>
+// --- Parallelization & Multi-threading ---
+#include <deal.II/base/work_stream.h>         // Thread-safe assembly management
+#include <deal.II/base/multithread_info.h>    // Controls the number of threads used
 
-#include <deal.II/fe/fe_system.h>
-#include <deal.II/fe/fe_q.h>
-#include <deal.II/lac/solver_gmres.h>
+// --- Numerics & Tools ---
+#include <deal.II/numerics/vector_tools.h>    // Interpolation, boundary conditions
+#include <deal.II/numerics/matrix_tools.h>    // Assembly of standard matrices (Mass, Laplace)
+#include <deal.II/numerics/data_out.h>        // Writing .vtu/.vtk files for Paraview
+#include <deal.II/numerics/error_estimator.h> // Kelly error estimator (if needed for refinement)
+#include <deal.II/base/parameter_handler.h>   // Reading inputs from .prm files
+#include <deal.II/base/conditional_ostream.h> // Prevents output spam in parallel runs
+#include <deal.II/base/timer.h>               // Timer
 
-#include <deal.II/numerics/data_out.h>
-#include <fstream>
-#include <iostream>
-#include "equation.h"
-
-#include <math.h>
-#include <deal.II/base/conditional_ostream.h>
-#include <deal.II/lac/affine_constraints.h>
-
-#include <deal.II/grid/grid_tools.h>
- 
-#include <deal.II/dofs/dof_renumbering.h>
- 
-#include <deal.II/fe/fe_system.h>
-#include <deal.II/fe/mapping_q.h>
- 
-#include <deal.II/numerics/vector_tools.h>
-#include <deal.II/numerics/data_out.h>
-#include <deal.II/numerics/error_estimator.h>
-#include <deal.II/lac/solver_gmres.h>
-
-#include <deal.II/base/work_stream.h>
-#include <deal.II/base/multithread_info.h>
-
-#include <random>
- 
-#include <deal.II/base/parameter_handler.h>
-
-#include "RandomField.h"
+// --- Standard Library & External ---
+#include <fstream>                            // File streams for output
+#include <iostream>                           // Console output
+#include <math.h>                             // Basic math functions
+#include <random>                             // C++ random number generators
+#include "equation.h"                         // Your AceGen-generated physics
+#include "RandomField.h"                      // Your custom Monte Carlo field
+#include <deal.II/base/timer.h>               // Timer
 
 using namespace dealii;
 
@@ -64,6 +58,7 @@ template <int dim, int n>
 class Step3
 {
 public:
+
   Step3(ParameterHandler &);
 
   void run();
@@ -71,9 +66,11 @@ public:
 
 private:
 
-  RandomField<dim, n> random_field;
-
   ParameterHandler &prm;
+
+  mutable TimerOutput computing_timer;
+
+  RandomField<dim, n> random_field;
 
   void make_grid();
   void setup_system();
@@ -162,6 +159,7 @@ struct AssemblyScratchData
   int newton_iteration;
   int solver_iteration;
 
+  double linear_residual;
 };
 
 #endif //DOUBLE_DITCH

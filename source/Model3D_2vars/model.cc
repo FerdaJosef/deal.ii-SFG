@@ -21,6 +21,7 @@
 template <int dim, int n>
 Step3<dim, n>::Step3(ParameterHandler &param)
   : prm(param)
+  , computing_timer(std::cout, TimerOutput::summary, TimerOutput::wall_times)
   , fe(FE_Q<dim>(1), n)
   , dof_handler(triangulation)
   , n_q_points(QGauss<dim>(fe.degree + 1).size())
@@ -49,6 +50,12 @@ Step3<dim, n>::Step3(ParameterHandler &param)
   }
   prm.leave_subsection();
 
+  prm.enter_subsection("Solver");
+  {
+    linear_residual = prm.get_double("Linear system error");
+  }
+  prm.leave_subsection();
+
 };
 
 /**
@@ -58,6 +65,8 @@ Step3<dim, n>::Step3(ParameterHandler &param)
 template <int dim, int n>
 void Step3<dim, n>::make_grid()
 {
+  TimerOutput::Scope scope(computing_timer, "Making grid");
+
   GridGenerator::hyper_cube(triangulation, left_lim, right_lim, true);
   triangulation.refine_global(
     n_refinements
@@ -75,6 +84,8 @@ void Step3<dim, n>::make_grid()
 template <int dim, int n>
 void Step3<dim, n>::setup_system()
 {
+  TimerOutput::Scope timing_section(computing_timer, "Setting up our system");
+
   dof_handler.distribute_dofs(fe);
   std::cout << "Number of degrees of freedom: " << dof_handler.n_dofs()
             << std::endl;
@@ -171,6 +182,9 @@ Step3<dim, n>::AssemblyScratchData::AssemblyScratchData(
 template <int dim, int n>
 void Step3<dim, n>::assemble_system()
 {
+  TimerOutput::Scope timing_section(computing_timer, "Assembly");
+
+
   system_matrix = 0;
   system_rhs = 0;
 
@@ -216,7 +230,6 @@ void Step3<dim, n>::local_assemble_system(
   scratch_data.fe_values.get_function_values(oldsolution, scratch_data.values_old);
   scratch_data.fe_values.get_function_values(solution, scratch_data.values_newton);
 
-  const unsigned int cell_id = cell->active_cell_index();
 
   //right_hand_side(fe_values.get_quadrature_points(), rhs_values);
 
@@ -322,7 +335,9 @@ double Step3<dim, n>::determine_step_length() const
 template <int dim, int n>
 void Step3<dim, n>::solve()
 {
-  SolverControl            solver_control(20000, 1e-6 * system_rhs.l2_norm());
+  TimerOutput::Scope timing_section(computing_timer, "Solving linear system");
+
+  SolverControl            solver_control(20000, linear_residual * system_rhs.l2_norm());
   SolverGMRES<Vector<double>> solver(solver_control);
 
   PreconditionJacobi<SparseMatrix<double>> preconditioner;
@@ -439,6 +454,9 @@ void Step3<dim, n>::make_timestep()
 template <int dim, int n>
 void Step3<dim, n>::output_results() const
 {
+
+  TimerOutput::Scope timing_section(computing_timer, "Outputting");
+
   static std::vector<std::pair<double, std::string>> times_and_names;
 
   DataOut<dim> data_out;

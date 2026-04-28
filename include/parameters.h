@@ -100,6 +100,12 @@
 
     prm.leave_subsection();
 
+    prm.enter_subsection("Solver");
+    {
+      prm.declare_entry("Linear system error", "1e-7", Patterns::Double(0), "Minimum"); 
+    }
+    prm.leave_subsection();
+
     prm.enter_subsection("Output parameters");
     {
       prm.declare_entry("Output filename",

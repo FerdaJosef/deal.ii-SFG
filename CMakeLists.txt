@@ -2,7 +2,7 @@
 #  CMake script for the step-3 tutorial program:
 ##
 
-set(MODEL_DIR "${CMAKE_SOURCE_DIR}/source/Model1D_2vars")
+set(MODEL_DIR "${CMAKE_SOURCE_DIR}/source/Model3D_2vars")
 
 execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink 
                 ${MODEL_DIR}/double_ditch.prm 
