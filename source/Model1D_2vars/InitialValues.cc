@@ -9,6 +9,9 @@ double InitialValues<dim, n>::value(const Point<dim> &p,
  static std::mt19937 gen(std::random_device{}());
 static std::normal_distribution<double> dist(0.0, 1.0);
 
+(void)p;
+(void)component;
+
   const double noise = dist(gen) * 2e-2;
 
   if (p[0] <= 10.0)

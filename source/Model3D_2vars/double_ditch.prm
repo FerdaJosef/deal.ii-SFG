@@ -14,7 +14,7 @@ subsection Mesh & geometry parameters
   set Mesh right limit      = 25.0
   
   # Number of global mesh refinement steps
-  set Number of refinements = 4
+  set Number of refinements = 5
 end
 
 subsection Temporal parameters
@@ -25,7 +25,7 @@ subsection Temporal parameters
   set Initial time step       = 1e-5
 
   # Simulation will stop when this time is reached
-  set Final time              = 800.0
+  set Final time              = 2e-5
 
   # Starting index for the time step count (usually 0)
   set Time step number        = 0
@@ -49,7 +49,10 @@ subsection Temporal parameters
   set Max iterations = 10
 end
 
+subsection Solver
+  set Linear system error = 1e-9
+end
+
 subsection Output parameters
   set Output filename = output/solution
-
 end

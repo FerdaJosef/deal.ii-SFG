@@ -21,6 +21,7 @@
 template <int dim, int n>
 Step3<dim, n>::Step3(ParameterHandler &param)
   : prm(param)
+  , computing_timer(std::cout, TimerOutput::summary, TimerOutput::wall_times)
   , fe(FE_Q<dim>(1), n)
   , dof_handler(triangulation)
   , n_q_points(QGauss<dim>(fe.degree + 1).size())
@@ -49,6 +50,12 @@ Step3<dim, n>::Step3(ParameterHandler &param)
   }
   prm.leave_subsection();
 
+  prm.enter_subsection("Solver");
+  {
+    linear_residual = prm.get_double("Linear system error");
+  }
+  prm.leave_subsection();
+
 };
 
 /**
@@ -58,6 +65,8 @@ Step3<dim, n>::Step3(ParameterHandler &param)
 template <int dim, int n>
 void Step3<dim, n>::make_grid()
 {
+  TimerOutput::Scope scope(computing_timer, "Making grid");
+
   GridGenerator::hyper_cube(triangulation, left_lim, right_lim, true);
   triangulation.refine_global(
     n_refinements
@@ -75,6 +84,8 @@ void Step3<dim, n>::make_grid()
 template <int dim, int n>
 void Step3<dim, n>::setup_system()
 {
+  TimerOutput::Scope timing_section(computing_timer, "Setting up our system");
+
   dof_handler.distribute_dofs(fe);
   std::cout << "Number of degrees of freedom: " << dof_handler.n_dofs()
             << std::endl;
@@ -109,6 +120,11 @@ void Step3<dim, n>::setup_system()
 
   // Initialize Right-Hand Side (Random Field) storage
   random_field.reinit(triangulation.n_active_cells(), n_q_points);
+
+  component_indices.resize(dof_handler.n_dofs());
+  for (unsigned int i=0; i<fe.n_dofs_per_cell(); ++i)
+    component_indices[i] = fe.system_to_component_index(i).first;
+
 };
 
 /**
@@ -171,6 +187,8 @@ Step3<dim, n>::AssemblyScratchData::AssemblyScratchData(
 template <int dim, int n>
 void Step3<dim, n>::assemble_system()
 {
+  TimerOutput::Scope timing_section(computing_timer, "Assembly");
+
   system_matrix = 0;
   system_rhs = 0;
 
@@ -193,6 +211,7 @@ void Step3<dim, n>::local_assemble_system(
         AssemblyScratchData                                  &scratch_data,
         AssemblyCopyData                                     &copy_data)
 {
+
   const QGauss<dim> quadrature_formula(fe.degree + 1);
 
   const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
@@ -216,8 +235,6 @@ void Step3<dim, n>::local_assemble_system(
   scratch_data.fe_values.get_function_values(oldsolution, scratch_data.values_old);
   scratch_data.fe_values.get_function_values(solution, scratch_data.values_newton);
 
-  const unsigned int cell_id = cell->active_cell_index();
-
   //right_hand_side(fe_values.get_quadrature_points(), rhs_values);
 
   for (const unsigned int q_index : scratch_data.fe_values.quadrature_point_indices())
@@ -238,7 +255,6 @@ void Step3<dim, n>::local_assemble_system(
 
       const auto &rhs_val = random_field.get_value(cell->active_cell_index(), q_index);
 
-      const auto &sd = scratch_data;
       for (const unsigned int i : scratch_data.fe_values.dof_indices())
         {
         const unsigned int component_i = fe.system_to_component_index(i).first;
@@ -250,42 +266,42 @@ void Step3<dim, n>::local_assemble_system(
         // shape value known about it through index i
         // ted tim vzdycky zredukuju dimenzi objektu a prevedu to na skalarni pripad
 
-          copy_data.cell_rhs(i) -= (sd.fe_values.shape_value(i, q_index) * 
-                          sd.dPsiDu[component_i]
 
-                      + sd.fe_values.shape_grad(i, q_index) * sd.dPsidGradU[component_i]
-                          + sd.fe_values.shape_value(i,q_index) * rhs_val[component_i]) *
-                          sd.fe_values.JxW(q_index);
+          copy_data.cell_rhs(i) -= (scratch_data.fe_values.shape_value(i, q_index) * 
+                          scratch_data.dPsiDu[component_i]
+
+                      + scratch_data.fe_values.shape_grad(i, q_index) * scratch_data.dPsidGradU[component_i]
+                          + scratch_data.fe_values.shape_value(i,q_index) * rhs_val[component_i]) *
+                          scratch_data.fe_values.JxW(q_index);
           }
-      for (const unsigned int i : scratch_data.fe_values.dof_indices())
-      {
-        const unsigned int component_i = fe.system_to_component_index(i).first;
-        
-          for (const unsigned int j : scratch_data.fe_values.dof_indices())
-          {
-            const unsigned int component_j = fe.system_to_component_index(j).first;
 
-            copy_data.cell_matrix(i, j) +=
-                (sd.fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
-                    sd.dPsidGradU2[component_i][component_j] *           // dPsi/d2(grad u)
-                sd.fe_values.shape_grad(j, q_index)    // grad phi_j(x_q)
-                + 
-                sd.fe_values.shape_value(i, q_index) * // phi_i(x_q)
-                    sd.dPsiDu2(component_i, component_j) *           // dPsi/d2( u)
-                sd.fe_values.shape_value(j, q_index)     // phi_j(x_q)
-                +
-                sd.fe_values.shape_value(i, q_index) * //  phi_i(x_q)
-                    sd.dPsidUdGradU[component_i][component_j] *           // dPsi/d(grad u)du
-                sd.fe_values.shape_grad(j, q_index)     // grad phi_j(x_q)
-                +
-                sd.fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
-                    sd.dPsidUdGradU[component_i][component_j] *           // dPsi/d(grad u)du
-                sd.fe_values.shape_value(j, q_index)     // phi_j(x_q)
-                ) *
-                sd.fe_values.JxW(q_index);           // dx
-        }
-      }
+      const double jxw = scratch_data.fe_values.JxW(q_index);
+
+      for (unsigned int i : scratch_data.fe_values.dof_indices())
+      {
+        const unsigned int comp_i = component_indices[i];
+        const Tensor<1, dim> grad_i = scratch_data.fe_values.shape_grad(i, q_index);
+        const double val_i          = scratch_data.fe_values.shape_value(i, q_index);
+
+        for (unsigned int j : scratch_data.fe_values.dof_indices())
+        {
+          const unsigned int comp_j = component_indices[j];
+          
+          // Cache shape values for j
+          const Tensor<1, dim> grad_j = scratch_data.fe_values.shape_grad(j, q_index);
+          const double val_j          = scratch_data.fe_values.shape_value(j, q_index);
+
+          // Now perform the math with local variables
+          copy_data.cell_matrix(i, j) +=
+            (
+              grad_i * scratch_data.dPsidGradU2[comp_i][comp_j] * grad_j +
+              val_i  * scratch_data.dPsiDu2(comp_i, comp_j)      * val_j  +
+              val_i  * (scratch_data.dPsidUdGradU[comp_i][comp_j] * grad_j) +
+              grad_i * (scratch_data.dPsidUdGradU[comp_j][comp_i] * val_j)
+            ) * jxw;
+          }
     }
+  }
   cell->get_dof_indices(copy_data.local_dof_indices);
 }
 
@@ -294,7 +310,8 @@ void Step3<dim, n>::local_assemble_system(
  */
 template <int dim, int n>
 void Step3<dim, n>::copy_local_to_global(const AssemblyCopyData &copy_data)
-  {
+  { 
+
     constraints.distribute_local_to_global(
       copy_data.cell_matrix,
       copy_data.cell_rhs,
@@ -322,7 +339,9 @@ double Step3<dim, n>::determine_step_length() const
 template <int dim, int n>
 void Step3<dim, n>::solve()
 {
-  SolverControl            solver_control(20000, 1e-6 * system_rhs.l2_norm());
+  TimerOutput::Scope timing_section(computing_timer, "Solving");
+
+  SolverControl            solver_control(20000, linear_residual * system_rhs.l2_norm());
   SolverGMRES<Vector<double>> solver(solver_control);
 
   PreconditionJacobi<SparseMatrix<double>> preconditioner;

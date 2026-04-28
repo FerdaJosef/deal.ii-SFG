@@ -216,8 +216,6 @@ void Step3<dim, n>::local_assemble_system(
   scratch_data.fe_values.get_function_values(oldsolution, scratch_data.values_old);
   scratch_data.fe_values.get_function_values(solution, scratch_data.values_newton);
 
-  const unsigned int cell_id = cell->active_cell_index();
-
   //right_hand_side(fe_values.get_quadrature_points(), rhs_values);
 
   for (const unsigned int q_index : scratch_data.fe_values.quadrature_point_indices())
