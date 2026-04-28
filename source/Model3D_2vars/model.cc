@@ -458,6 +458,8 @@ void Step3<dim, n>::make_timestep()
 template <int dim, int n>
 void Step3<dim, n>::output_results() const
 {
+  TimerOutput::Scope timing_section(computing_timer, "Outputting");
+
   static std::vector<std::pair<double, std::string>> times_and_names;
 
   DataOut<dim> data_out;

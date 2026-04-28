@@ -67,7 +67,7 @@ private:
 
   ParameterHandler &prm;
 
-  TimerOutput computing_timer;
+  mutable TimerOutput computing_timer;
 
   RandomField<dim, n> random_field;
 
