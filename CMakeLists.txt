@@ -2,10 +2,11 @@
 #  CMake script for the step-3 tutorial program:
 ##
 
-set(MODEL_DIR "${CMAKE_SOURCE_DIR}/source/Model2D_3vars")
+set(MODEL_DIR "${CMAKE_SOURCE_DIR}/source/Model1D_2vars")
 
-file(COPY ${MODEL_DIR}/double_ditch.prm
-     DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink 
+                ${MODEL_DIR}/double_ditch.prm 
+                ${CMAKE_CURRENT_BINARY_DIR}/double_ditch.prm)
 
 include_directories(
     ${CMAKE_SOURCE_DIR}
