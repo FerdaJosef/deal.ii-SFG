@@ -432,7 +432,7 @@ template <int dim, int n>
 void Step3<dim, n>::make_timestep()
 {
 
-    random_field.generate(triangulation.n_active_cells(), n_q_points, delta_t, 1e-6);
+    random_field.generate(triangulation.n_active_cells(), n_q_points, delta_t, 1e-5);
 
     time+=delta_t;
     timestep_number++;
@@ -531,7 +531,7 @@ void Step3<dim, n>::run()
     output_results();
   }
 
-  std::cout << "The norm of our solution is " << solution.linfty_norm() << std::endl;
+  std::cout << solution.linfty_norm() << std::endl;
 }
 
 template class Step3<3,2>;

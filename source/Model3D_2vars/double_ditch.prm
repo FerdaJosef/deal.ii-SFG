@@ -51,6 +51,8 @@ end
 
 subsection Solver
   set Linear system error = 1e-9
+
+  set Max linear solver iterations = 7000
 end
 
 subsection Output parameters
