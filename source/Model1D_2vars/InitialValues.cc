@@ -11,25 +11,25 @@ double InitialValues<dim, n>::value(const Point<dim> &p,
  static std::mt19937 gen(std::random_device{}());
 static std::normal_distribution<double> dist(0.0, 1.0);
 
-  const double noise = dist(gen) * 1e-2;
+  const double noise = dist(gen) * 5e-3;
 
   if (p[0] <= 10.0)
   {
     if (component == 0) {
-      double hodnota = 0.5 + noise;
+      double hodnota = 0.491 + noise;
       return std::max(0.0, std::min(1.0, hodnota));
     }
 
 
     else if (component == 1)
     {
-      double hodnota =  0.5 + noise;
+      double hodnota =  0.488 + noise;
       return std::max(0.0, std::min(1.0, hodnota));
     }
 
   }
 
-  else if (p[0] <= 17.0)
+  else if (p[0] <= 17.5)
   {
     double hodnota =  0.0 + noise;
     return std::max(0.0, std::min(1.0, hodnota));
@@ -44,16 +44,16 @@ static std::normal_distribution<double> dist(0.0, 1.0);
 
 
     else if (component == 1) {
-      double hodnota =  0.5 + noise;
+      double hodnota =  0.49 + noise;
       return std::max(0.0, std::min(1.0, hodnota));
     }
 
   }
 
-  else if (p[0] <= 33.0)
+  else if (p[0] <= 32.5)
   {
     if (component == 0) {
-      double hodnota =  0.5 + noise;
+      double hodnota =  0.49 + noise;
       return std::max(0.0, std::min(1.0, hodnota));
     }
 
@@ -65,7 +65,7 @@ static std::normal_distribution<double> dist(0.0, 1.0);
 
   }
 
-  else if (p[0] <= 37.0)
+  else if (p[0] <= 37.5)
   {
     double hodnota = 0.0 + noise;
     return std::max(0.0, std::min(1.0, hodnota));
@@ -74,7 +74,7 @@ static std::normal_distribution<double> dist(0.0, 1.0);
   else if (p[0] <= 40.0)
   {
     if (component == 0) {
-      double hodnota =  1.0 + noise;
+      double hodnota =  0.98 + noise;
       return std::max(0.0, std::min(1.0, hodnota));
     }
 
@@ -85,7 +85,7 @@ static std::normal_distribution<double> dist(0.0, 1.0);
 
   }
 
-  else if (p[0] <= 43.0)
+  else if (p[0] <= 42.5)
   {
     if (component == 0) {
       double hodnota =  0.0 + noise;
@@ -93,7 +93,7 @@ static std::normal_distribution<double> dist(0.0, 1.0);
     }
 
     else if (component == 1) {
-      double hodnota =  1.0 + noise;
+      double hodnota =  0.98 + noise;
       return std::max(0.0, std::min(1.0, hodnota));
     }
 

@@ -14,7 +14,7 @@ subsection Mesh & geometry parameters
   set Mesh right limit      = 50.0
   
   # Number of global mesh refinement steps
-  set Number of refinements = 10
+  set Number of refinements = 11
 end
 
 subsection Temporal parameters
