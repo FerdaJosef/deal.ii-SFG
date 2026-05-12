@@ -20,7 +20,11 @@
 
 template <int dim, int n>
 Step3<dim, n>::Step3(ParameterHandler &param)
-  : prm(param)
+  : mpi_communicator(MPI_COMM_WORLD)
+  , n_mpi_processes(Utilities::MPI::n_mpi_processes(mpi_communicator))
+  , this_mpi_process(Utilities::MPI::this_mpi_process(mpi_communicator))
+  , pcout(std::cout, (this_mpi_process == 0))
+  , prm(param)
   , computing_timer(std::cout, TimerOutput::summary, TimerOutput::wall_times)
   , fe(FE_Q<dim>(1), n)
   , dof_handler(triangulation)
@@ -58,6 +62,12 @@ Step3<dim, n>::Step3(ParameterHandler &param)
   }
   prm.leave_subsection();
 
+  values_newton.resize(n_q_points, Vector<double>(n));
+  values_old.resize(n_q_points, Vector<double>(n));
+
+  gradients_newton.resize(n_q_points,
+                          std::vector<Tensor<1,dim>>(n));
+
 };
 
 /**
@@ -88,7 +98,17 @@ void Step3<dim, n>::setup_system()
 {
   TimerOutput::Scope timing_section(computing_timer, "Setting up our system");
 
+  #ifdef DEAL_II_WITH_METIS
+    GridTools::partition_triangulation(n_mpi_processes, triangulation);
+  #else
+    GridTools::partition_triangulation_zorder(n_mpi_processes, triangulation);
+  #endif
+ 
+
   dof_handler.distribute_dofs(fe);
+
+  DoFRenumbering::subdomain_wise(dof_handler);
+
   std::cout << "Number of degrees of freedom: " << dof_handler.n_dofs()
             << std::endl;
 
@@ -109,16 +129,29 @@ void Step3<dim, n>::setup_system()
 
   constraints.close();
 
-  DynamicSparsityPattern dsp(dof_handler.n_dofs());
-  DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints, true);
-  sparsity_pattern.copy_from(dsp);
+  DynamicSparsityPattern dsp(locally_relevant_dofs);
 
-  system_matrix.reinit(sparsity_pattern);
+  DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints, false);
+  SparsityTools::distribute_sparsity_pattern(dsp,
+                                              dof_handler.locally_owned_dofs(),
+                                              mpi_communicator,
+                                              locally_relevant_dofs);
 
-  solution.reinit(dof_handler.n_dofs());
-  system_rhs.reinit(dof_handler.n_dofs());
-  oldsolution.reinit(dof_handler.n_dofs());
-  newton_iterate.reinit(dof_handler.n_dofs());
+  //sparsity_pattern.copy_from(dsp);
+
+  locally_owned_dofs = dof_handler.locally_owned_dofs();
+  locally_relevant_dofs =
+    DoFTools::extract_locally_relevant_dofs(dof_handler);
+
+  system_matrix.reinit(locally_owned_dofs,
+                        locally_owned_dofs,
+                        dsp,
+                        mpi_communicator);
+
+  solution.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
+  system_rhs.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
+  oldsolution.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
+  newton_iterate.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
 
   // Initialize Right-Hand Side (Random Field) storage
   random_field.reinit(triangulation.n_active_cells(), n_q_points);
@@ -177,42 +210,18 @@ Step3<dim, n>::AssemblyScratchData::AssemblyScratchData(
     , dPsidGradU2(scratch_data.dPsidGradU2)
   {}
 
-  /**
- * @brief Orchestrates the parallel assembly of the Jacobian and Residual.
- */
-
-template <int dim, int n>
-void Step3<dim, n>::assemble_system()
-{
-  TimerOutput::Scope timing_section(computing_timer, "Assembly");
-
-
-  system_matrix = 0;
-  system_rhs = 0;
-
-  WorkStream::run(dof_handler.begin_active(),
-                  dof_handler.end(),
-                  *this,
-                  &Step3<dim, n>::local_assemble_system,
-                  &Step3<dim, n>::copy_local_to_global,
-                  AssemblyScratchData(fe),
-                  AssemblyCopyData());
-}
-
 /**
  * @brief Local assembly routine called by WorkStream.
  * Integrates AceGen symbolic expressions with finite element basis functions.
  */
 template <int dim, int n>
-void Step3<dim, n>::local_assemble_system(
-        const typename DoFHandler<dim>::active_cell_iterator &cell,
-        AssemblyScratchData                                  &scratch_data,
-        AssemblyCopyData                                     &copy_data)
+void Step3<dim, n>::assemble_system(
+          AssemblyScratchData &scratch_data,
+          AssemblyCopyData &copy_data)
 {
   const QGauss<dim> quadrature_formula(fe.degree + 1);
 
   const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
-  //n_q_points    = quadrature_formula.size();
 
   copy_data.cell_matrix.reinit(dofs_per_cell, dofs_per_cell);
   copy_data.cell_rhs.reinit(dofs_per_cell);
@@ -232,95 +241,86 @@ void Step3<dim, n>::local_assemble_system(
   scratch_data.fe_values.get_function_values(oldsolution, scratch_data.values_old);
   scratch_data.fe_values.get_function_values(solution, scratch_data.values_newton);
 
-
-  //right_hand_side(fe_values.get_quadrature_points(), rhs_values);
-
-  for (const unsigned int q_index : scratch_data.fe_values.quadrature_point_indices())
+  for (const auto &cell : dof_handler.active_cell_iterators())
     {
-    //const auto &x_q = fe_values.quadrature_point(q_index);
-
-    equation<dim, n>(scratch_data.acegen_scratch,
-            scratch_data.values_newton[q_index],
-            scratch_data.values_old[q_index],
-        scratch_data.gradients_newton[q_index],
-        scratch_data.dPsiDu,
-        scratch_data.dPsidGradU,
-        scratch_data.dPsiDu2,
-        scratch_data.dPsidUdGradU,
-        scratch_data.dPsidGradU2, // 2, 2, 3, 3
-        &this->delta_t 
-      );
-
-      const auto &rhs_val = random_field.get_value(cell->active_cell_index(), q_index);
-
-      const auto &sd = scratch_data;
-      for (const unsigned int i : scratch_data.fe_values.dof_indices())
+      if (cell->is_locally_owned())
         {
-        const unsigned int component_i = fe.system_to_component_index(i).first;
-        
-        // number of degrees of freedom is equql to number "geometric dof" = support points
-        // function fe.system_to_component_index(i) returns a pair:
-        // first is the corresponding component of vector system
-        // second is the index of support point
-        // shape value known about it through index i
-        // ted tim vzdycky zredukuju dimenzi objektu a prevedu to na skalarni pripad
+          for (const unsigned int q_index : scratch_data.fe_values.quadrature_point_indices())
+            {
 
-          copy_data.cell_rhs(i) -= (sd.fe_values.shape_value(i, q_index) * 
-                          sd.dPsiDu[component_i]
+            equation<dim, n>(scratch_data.acegen_scratch,
+                    scratch_data.values_newton[q_index],
+                    scratch_data.values_old[q_index],
+                scratch_data.gradients_newton[q_index],
+                scratch_data.dPsiDu,
+                scratch_data.dPsidGradU,
+                scratch_data.dPsiDu2,
+                scratch_data.dPsidUdGradU,
+                scratch_data.dPsidGradU2, // 2, 2, 3, 3
+                &this->delta_t 
+              );
 
-                      + sd.fe_values.shape_grad(i, q_index) * sd.dPsidGradU[component_i]
-                          + sd.fe_values.shape_value(i,q_index) * rhs_val[component_i]) *
-                          sd.fe_values.JxW(q_index);
-          }
-      for (const unsigned int i : scratch_data.fe_values.dof_indices())
-      {
-        const unsigned int component_i = fe.system_to_component_index(i).first;
-        
-          for (const unsigned int j : scratch_data.fe_values.dof_indices())
-          {
-            const unsigned int component_j = fe.system_to_component_index(j).first;
+              const auto &rhs_val = random_field.get_value(cell->active_cell_index(), q_index);
 
-            copy_data.cell_matrix(i, j) +=
-                (sd.fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
-                    sd.dPsidGradU2[component_i][component_j] *           // dPsi/d2(grad u)
-                sd.fe_values.shape_grad(j, q_index)    // grad phi_j(x_q)
-                + 
-                sd.fe_values.shape_value(i, q_index) * // phi_i(x_q)
-                    sd.dPsiDu2(component_i, component_j) *           // dPsi/d2( u)
-                sd.fe_values.shape_value(j, q_index)     // phi_j(x_q)
-                +
-                sd.fe_values.shape_value(i, q_index) * //  phi_i(x_q)
-                    sd.dPsidUdGradU[component_i][component_j] *           // dPsi/d(grad u)du
-                sd.fe_values.shape_grad(j, q_index)     // grad phi_j(x_q)
-                +
-                sd.fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
-                    sd.dPsidUdGradU[component_i][component_j] *           // dPsi/d(grad u)du
-                sd.fe_values.shape_value(j, q_index)     // phi_j(x_q)
-                ) *
-                sd.fe_values.JxW(q_index);           // dx
-        }
-      }
+              const auto &sd = scratch_data;
+              for (const unsigned int i : scratch_data.fe_values.dof_indices())
+                {
+                const unsigned int component_i = fe.system_to_component_index(i).first;
+                
+                // number of degrees of freedom is equql to number "geometric dof" = support points
+                // function fe.system_to_component_index(i) returns a pair:
+                // first is the corresponding component of vector system
+                // second is the index of support point
+                // shape value known about it through index i
+                // ted tim vzdycky zredukuju dimenzi objektu a prevedu to na skalarni pripad
+
+                  copy_data.cell_rhs(i) -= (sd.fe_values.shape_value(i, q_index) * 
+                                  sd.dPsiDu[component_i]
+
+                              + sd.fe_values.shape_grad(i, q_index) * sd.dPsidGradU[component_i]
+                                  + sd.fe_values.shape_value(i,q_index) * rhs_val[component_i]) *
+                                  sd.fe_values.JxW(q_index);
+                  }
+              for (const unsigned int i : scratch_data.fe_values.dof_indices())
+              {
+                const unsigned int component_i = fe.system_to_component_index(i).first;
+                
+                  for (const unsigned int j : scratch_data.fe_values.dof_indices())
+                  {
+                    const unsigned int component_j = fe.system_to_component_index(j).first;
+
+                    copy_data.cell_matrix(i, j) +=
+                        (sd.fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
+                            sd.dPsidGradU2[component_i][component_j] *           // dPsi/d2(grad u)
+                        sd.fe_values.shape_grad(j, q_index)    // grad phi_j(x_q)
+                        + 
+                        sd.fe_values.shape_value(i, q_index) * // phi_i(x_q)
+                            sd.dPsiDu2(component_i, component_j) *           // dPsi/d2( u)
+                        sd.fe_values.shape_value(j, q_index)     // phi_j(x_q)
+                        +
+                        sd.fe_values.shape_value(i, q_index) * //  phi_i(x_q)
+                            sd.dPsidUdGradU[component_i][component_j] *           // dPsi/d(grad u)du
+                        sd.fe_values.shape_grad(j, q_index)     // grad phi_j(x_q)
+                        +
+                        sd.fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
+                            sd.dPsidUdGradU[component_i][component_j] *           // dPsi/d(grad u)du
+                        sd.fe_values.shape_value(j, q_index)     // phi_j(x_q)
+                        ) *
+                        sd.fe_values.JxW(q_index);           // dx
+                }
+              }
+            }
+          cell->get_dof_indices(copy_data.local_dof_indices);
+
+          constraints.distribute_local_to_global(
+              copy_data.cell_matrix,
+              copy_data.cell_rhs,
+              copy_data.local_dof_indices,
+              system_matrix,
+              system_rhs);
     }
-  cell->get_dof_indices(copy_data.local_dof_indices);
-}
-
-/**
- * @brief Thread-safe transfer of cell-local matrices to the global system matrix.
- */
-template <int dim, int n>
-void Step3<dim, n>::copy_local_to_global(const AssemblyCopyData &copy_data)
-  {
-    constraints.distribute_local_to_global(
-      copy_data.cell_matrix,
-      copy_data.cell_rhs,
-      copy_data.local_dof_indices,
-      system_matrix,
-      system_rhs);
   }
-
-  /**
- * @brief Determine the step length for the Newton update.
- */
+}
 
 template <int dim, int n>
 double Step3<dim, n>::determine_step_length() const
@@ -340,18 +340,20 @@ void Step3<dim, n>::solve()
   TimerOutput::Scope timing_section(computing_timer, "Solving linear system");
 
   SolverControl            solver_control(20000, linear_residual * system_rhs.l2_norm());
-  SolverGMRES<Vector<double>> solver(solver_control);
+  PETScWrappers::SolverGMRES<Vector<double>> solver(solver_control);
 
-  PreconditionSSOR<SparseMatrix<double>> preconditioner;
+  PETScWrappers::PreconditionSSOR<SparseMatrix<double>> preconditioner;
   preconditioner.initialize(system_matrix, 1.2);
 
   solver.solve(system_matrix, newton_iterate, system_rhs, preconditioner);
 
-  constraints.distribute(newton_iterate);
+  Vector<double> localized_newton(newton_iterate);
+
+  constraints.distribute(localized_newton);
 
   const double alpha = determine_step_length();
 
-  solution.add(alpha, newton_iterate);
+  solution.add(alpha, localized_newton);
 
   constraints.distribute(solution);
 

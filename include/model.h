@@ -54,6 +54,13 @@
 #include <deal.II/base/timer.h>               // Timer
 #include <filesystem>
 
+// --- MPI, PETSc
+#include <deal.II/base/mpi.h>
+#include <deal.II/lac/petsc_vector.h>
+#include <deal.II/lac/petsc_sparse_matrix.h>
+#include <deal.II/lac/petsc_solver.h>
+#include <deal.II/lac/petsc_precondition.h>
+
 using namespace dealii;
 
 template <int dim, int n>
@@ -67,6 +74,13 @@ public:
 
 
 private:
+
+  MPI_Comm mpi_communicator;
+
+  const unsigned int n_mpi_processes;
+  const unsigned int this_mpi_process;
+
+  ConditionalOStream pcout;
 
   ParameterHandler &prm;
 
@@ -103,21 +117,8 @@ struct AssemblyScratchData
 
   std::vector<std::vector<Tensor<2,dim>>> dPsidGradU2;
 };
- 
-  struct AssemblyCopyData
-  {
-    FullMatrix<double>                   cell_matrix;
-    Vector<double>                       cell_rhs;
-    std::vector<types::global_dof_index> local_dof_indices;
-  };
   
   void assemble_system();
-
-  void local_assemble_system(
-      const typename DoFHandler<dim>::active_cell_iterator &cell,
-      AssemblyScratchData                                  &scratch,
-      AssemblyCopyData                                     &copy_data);
-  void copy_local_to_global(const AssemblyCopyData &copy_data);
 
   void solve();
   bool time_step_update();
@@ -133,13 +134,15 @@ struct AssemblyScratchData
 
   AffineConstraints<double> constraints;
 
-  SparsityPattern      sparsity_pattern;
-  SparseMatrix<double> system_matrix;
+  PETScWrappers::MPI::SparseMatrix system_matrix;
 
-  Vector<double> oldsolution;
-  Vector<double> newton_iterate;
-  Vector<double> solution;
-  Vector<double> system_rhs;
+  IndexSet locally_owned_dofs;
+  IndexSet locally_relevant_dofs;
+
+  PETScWrappers::MPI::Vector<double> oldsolution;
+  PETScWrappers::MPI::Vector<double> newton_iterate;
+  PETScWrappers::MPI::Vector<double> solution;
+  PETScWrappers::MPI::Vector<double> system_rhs;
 
   const unsigned int n_q_points;
   std::vector<std::vector<Tensor<1,n>>> rhs_values;
