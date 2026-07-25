@@ -21,7 +21,7 @@ if (r < 5.0)
     if (component == 0)
     {
         if (theta >= -M_PI/3.0 && theta < M_PI/3.0)
-            return 0.8 + noise;
+            return 0.99 + noise;
         else
             return 0.0 + noise;
     }
@@ -29,7 +29,7 @@ if (r < 5.0)
     else if (component == 1)
     {
         if (theta >= M_PI/3.0 && theta < M_PI)
-            return 0.8 + noise;
+            return 0.99 + noise;
         else
             return 0.0 + noise;
     }
@@ -37,7 +37,7 @@ if (r < 5.0)
     else if (component == 2)
     {
         if (theta >= -M_PI && theta < -M_PI/3.0)
-            return 0.8 + noise;
+            return 0.99 + noise;
         else
             return 0.0 + noise;
     }

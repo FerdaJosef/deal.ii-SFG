@@ -1,17 +1,17 @@
 subsection General information
   # Physical dimension of our problem
-  set Dimension     = 2
+  set Dimension     = 1
 
   # Number of variables (number of omegas in our case)
-  set Number of variables   = 3
+  set Number of variables   = 2
 end
 
 subsection Mesh & geometry parameters
   # The left boundary of our domain
-  set Mesh left limit       = -25.0
+  set Mesh left limit       = -25
 
   # The right boundary of our domain
-  set Mesh right limit      = 25.0
+  set Mesh right limit      = 25
   
   # Number of global mesh refinement steps
   set Number of refinements = 6
@@ -37,7 +37,7 @@ subsection Temporal parameters
   set Min time step       = 1e-8
 
   # If Newton converges fast, multiply dt by this
-  set Max multiplier          = 3.0
+  set Max multiplier          = 2.0
 
   # If Newton struggles, multiply dt by this
   set Min multiplier          = 0.5
@@ -50,12 +50,12 @@ subsection Temporal parameters
 end
 
 subsection Solver
-  set Linear system error = 1e-12
+  set Linear system error = 1e-9
 
-  set Max linear solver iterations = 7000
+  set Max linear solver iterations = 400
 end
 
 subsection Output parameters
-  set Output filename = output/solution
+  set Output filename = output/half
 
 end

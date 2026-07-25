@@ -32,7 +32,7 @@ int main()
             std::filesystem::create_directories(p.parent_path());
         }
 
-        Step3<1, 2> double_ditch(prm);
+        Step3<2, 4> double_ditch(prm);
         double_ditch.run();
       }
     catch (std::exception &exc)
