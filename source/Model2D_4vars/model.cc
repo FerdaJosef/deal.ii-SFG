@@ -80,6 +80,8 @@ void Step3<dim, n>::setup_system()
   pcout << "Number of degrees of freedom: " << dof_handler.n_dofs() << std::endl;
 
   constraints.clear();
+  constraints.reinit(locally_relevant_dofs);
+
   if constexpr (dim == 2)
   {
     DoFTools::make_periodicity_constraints(dof_handler, 0, 1, 0, constraints);
@@ -115,6 +117,8 @@ void Step3<dim, n>::setup_system()
 template <int dim, int n>
 void Step3<dim, n>::assemble_system()
 {
+  TimerOutput::Scope timing_section(computing_timer, "Assembling");
+
   system_matrix = 0;
   system_rhs    = 0;
 
@@ -144,7 +148,7 @@ void Step3<dim, n>::assemble_system()
 
   for (const auto &cell : dof_handler.active_cell_iterators())
   {
-    if (cell->is_locally_owned())
+    if (cell->subdomain_id() == this_mpi_process)
     {
       cell_matrix = 0;
       cell_rhs    = 0;
@@ -189,7 +193,7 @@ void Step3<dim, n>::assemble_system()
                  fe_values.shape_value(j, q_index) +
                fe_values.shape_value(i, q_index) * dPsidUdGradU[component_i][component_j] *
                  fe_values.shape_grad(j, q_index) +
-               fe_values.shape_grad(i, q_index) * dPsidUdGradU[component_i][component_j] *
+               fe_values.shape_grad(i, q_index) * dPsidUdGradU[component_j][component_i] *
                  fe_values.shape_value(j, q_index)) *
               fe_values.JxW(q_index);
           }
@@ -307,21 +311,44 @@ void Step3<dim, n>::make_timestep()
   timestep_number++;
 
   pcout << "Time: " << time << std::endl;
+
+  // Preserve parallel ghost vector synchronization
   distributed_old_solution = distributed_solution;
   oldsolution = distributed_old_solution;
+  
   newton_iteration = 0;
 
-  double residual_norm = 1.0;
-  while (residual_norm > 1e-10 && newton_iteration < max_it)
+  // 1. Initial assembly to compute true starting residual
+  assemble_system();
+  double residual_norm = system_rhs.l2_norm();
+
+  try 
   {
-    assemble_system();
-    residual_norm = system_rhs.l2_norm();
+    // 2. Loop evaluates REAL residual before solving
+    while (residual_norm > 1e-10 && newton_iteration < max_it)
+    {
+      pcout << "Newton iter " << newton_iteration 
+            << " | Residual norm: " << residual_norm << std::endl;
 
-    pcout << "The norm of our solution is: " << residual_norm << std::endl;
+      // Solve linear system K * delta_u = -R
+      solve();
+      newton_iteration++;
 
-    solve();
-    newton_iteration++;
+      // Assemble system with updated solution to check new residual
+      assemble_system();
+      residual_norm = system_rhs.l2_norm();
+    }
   }
+  catch (const std::exception &e)
+  {
+    pcout << "\n[!] Convergence failed gracefully: " << e.what() << std::endl;
+    pcout << "[!] Redirecting to adaptive time-step reduction logic..." << std::endl;
+
+    // Force iteration count to max_it so time_step_update() reduces delta_t
+    newton_iteration = max_it;
+  }
+
+  pcout << "Final Residual norm: " << residual_norm << std::endl;
 }
 
 template <int dim, int n>
@@ -329,30 +356,41 @@ void Step3<dim, n>::output_results() const
 {
   TimerOutput::Scope timing_section(computing_timer, "Outputting");
 
-  static std::vector<std::pair<double, std::string>> times_and_names;
-
-  DataOut<dim> data_out;
-  data_out.attach_dof_handler(dof_handler);
-
-  prm.enter_subsection("Output parameters");
-  const std::string output_filename = prm.get("Output filename");
-  data_out.parse_parameters(prm);
-  prm.leave_subsection();
-
-  data_out.add_data_vector(solution, "solution");
-  data_out.build_patches();
-
-  const std::string filename = output_filename + Utilities::int_to_string(timestep_number) + ".vtu";
-  const std::string vtu_basename = std::filesystem::path(filename).filename().string();
-
-  std::ofstream output(filename);
-  data_out.write(output, DataOutBase::vtu);
-
-  pcout << "Output written to " << filename << std::endl;
-  times_and_names.push_back({time, vtu_basename});
+  const Vector<double> localized_solution(solution);
 
   if (this_mpi_process == 0)
   {
+    static std::vector<std::pair<double, std::string>> times_and_names;
+
+    DataOut<dim> data_out;
+    data_out.attach_dof_handler(dof_handler);
+
+    prm.enter_subsection("Output parameters");
+    const std::string output_filename = prm.get("Output filename");
+    data_out.parse_parameters(prm);
+    prm.leave_subsection();
+
+    data_out.add_data_vector(localized_solution, "solution");
+
+    std::vector<unsigned int> partition_int(triangulation.n_active_cells());
+    GridTools::get_subdomain_association(triangulation, partition_int);
+
+    const Vector<double> partitioning(partition_int.begin(),
+                                      partition_int.end());
+
+    data_out.add_data_vector(partitioning, "partitioning");
+
+    data_out.build_patches();
+
+    const std::string filename = output_filename + Utilities::int_to_string(timestep_number) + ".vtu";
+    const std::string vtu_basename = std::filesystem::path(filename).filename().string();
+
+    std::ofstream output(filename);
+    data_out.write(output, DataOutBase::vtu);
+
+    pcout << "Output written to " << filename << std::endl;
+    times_and_names.push_back({time, vtu_basename});
+
     std::ofstream pvd_output(output_filename + ".pvd");
     DataOutBase::write_pvd_record(pvd_output, times_and_names);
   }
@@ -392,4 +430,4 @@ void Step3<dim, n>::run()
   pcout << "L-infinity norm: " << solution.linfty_norm() << std::endl;
 }
 
-template class Step3<1, 2>;
+template class Step3<2, 4>;

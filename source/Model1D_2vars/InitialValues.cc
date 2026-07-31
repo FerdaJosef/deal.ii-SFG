@@ -16,7 +16,7 @@ static std::normal_distribution<double> dist(0.0, 1.0);
   if (p[0] <= 10.0)
   {
     if (component == 0) {
-      double hodnota = 0.48 + noise;
+      double hodnota = 0.481 + noise;
       return std::max(0.0, std::min(1.0, hodnota));
     }
 

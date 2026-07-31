@@ -2,64 +2,65 @@
 #define DOUBLE_DITCH
 
 // --- Mesh & Geometry ---
-#include <deal.II/grid/tria.h>                // Basic triangulation classes
-#include <deal.II/grid/grid_generator.h>      // Standard shapes (hyper_cube, etc.)
-#include <deal.II/grid/grid_tools.h>          // Transformations, periodicity, finding cells
+#include <deal.II/grid/tria.h>
+#include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/grid_tools.h>
 
 // --- Degrees of Freedom (DoFs) ---
-#include <deal.II/dofs/dof_handler.h>         // Manages DoF distribution on the mesh
-#include <deal.II/dofs/dof_tools.h>           // High-level DoF operations (constraints, etc.)
-#include <deal.II/dofs/dof_renumbering.h>     // Reordering DoFs (Cuthill-McKee, etc.) for speed
+#include <deal.II/dofs/dof_handler.h>
+#include <deal.II/dofs/dof_tools.h>
+#include <deal.II/dofs/dof_renumbering.h>
 
 // --- Finite Elements & Quadrature ---
-#include <deal.II/fe/fe_q.h>                  // Lagrange finite elements
-#include <deal.II/fe/fe_system.h>             // Composing vector-valued elements (n-variables)
-#include <deal.II/fe/fe_values.h>             // Shape function evaluation at quadrature points
-#include <deal.II/fe/mapping_q.h>             // Maps reference cell to real cell geometry
-#include <deal.II/base/quadrature_lib.h>      // Standard Gauss-Legendre quadrature rules
+#include <deal.II/fe/fe_q.h>
+#include <deal.II/fe/fe_system.h>
+#include <deal.II/fe/fe_values.h>
+#include <deal.II/fe/mapping_q.h>
+#include <deal.II/base/quadrature_lib.h>
 
-// --- Linear Algebra (LAC) ---
-#include <deal.II/lac/vector.h>               // Simple vector class
-#include <deal.II/lac/full_matrix.h>          // Dense matrices (for local assembly)
-#include <deal.II/lac/sparse_matrix.h>        // Compressed Row Storage (for global system)
-#include <deal.II/lac/dynamic_sparsity_pattern.h> // Building the sparse matrix structure
-#include <deal.II/lac/affine_constraints.h>   // Handling Dirichlet, Periodic, and Hanging node constraints
+// --- Linear Algebra ---
+#include <deal.II/lac/vector.h>
+#include <deal.II/lac/full_matrix.h>
+#include <deal.II/lac/sparse_matrix.h>
+#include <deal.II/lac/dynamic_sparsity_pattern.h>
+#include <deal.II/lac/affine_constraints.h>
 
 // --- Linear Solvers & Preconditioners ---
-#include <deal.II/lac/solver_gmres.h>         // GMRES iterative solver
-#include <deal.II/lac/solver_cg.h>            // Conjugate Gradient solver
-#include <deal.II/lac/precondition.h>         // Basic preconditioners (Jacobi, etc.)
+#include <deal.II/lac/solver_gmres.h>
+#include <deal.II/lac/solver_cg.h>
+#include <deal.II/lac/precondition.h>
 #include <deal.II/lac/precondition_block.h>
 
-// --- Parallelization & Multi-threading ---
-#include <deal.II/base/work_stream.h>         // Thread-safe assembly management
-#include <deal.II/base/multithread_info.h>    // Controls the number of threads used
+// --- Parallelization (MPI) ---
+#include <deal.II/base/multithread_info.h>
 
 // --- Numerics & Tools ---
-#include <deal.II/numerics/vector_tools.h>    // Interpolation, boundary conditions
-#include <deal.II/numerics/matrix_tools.h>    // Assembly of standard matrices (Mass, Laplace)
-#include <deal.II/numerics/data_out.h>        // Writing .vtu/.vtk files for Paraview
-#include <deal.II/numerics/error_estimator.h> // Kelly error estimator (if needed for refinement)
-#include <deal.II/base/parameter_handler.h>   // Reading inputs from .prm files
-#include <deal.II/base/conditional_ostream.h> // Prevents output spam in parallel runs
-#include <deal.II/base/timer.h>               // Timer
+#include <deal.II/numerics/vector_tools.h>
+#include <deal.II/numerics/matrix_tools.h>
+#include <deal.II/numerics/data_out.h>
+#include <deal.II/base/parameter_handler.h>
+#include <deal.II/base/conditional_ostream.h>
+#include <deal.II/base/timer.h>
 
-// --- Standard Library & External ---
-#include <fstream>                            // File streams for output
-#include <iostream>                           // Console output
-#include <math.h>                             // Basic math functions
-#include <random>                             // C++ random number generators
-#include "equation.h"                         // Your AceGen-generated physics
-#include "RandomField.h"                      // Your custom Monte Carlo field
-#include <deal.II/base/timer.h>               // Timer
+// --- Standard Library ---
+#include <fstream>
+#include <iostream>
+#include <cmath>
+#include <random>
 #include <filesystem>
 
-// --- MPI, PETSc
+// --- External Headers ---
+#include "equation.h"
+#include "RandomField.h"
+
+// --- MPI & PETSc ---
 #include <deal.II/base/mpi.h>
 #include <deal.II/lac/petsc_vector.h>
 #include <deal.II/lac/petsc_sparse_matrix.h>
 #include <deal.II/lac/petsc_solver.h>
 #include <deal.II/lac/petsc_precondition.h>
+
+// --- Adaptive Mesh Refinement
 
 using namespace dealii;
 
@@ -67,86 +68,56 @@ template <int dim, int n>
 class Step3
 {
 public:
-
-  Step3(ParameterHandler &);
-
+  Step3(ParameterHandler &param);
   void run();
 
-
 private:
-
-  MPI_Comm mpi_communicator;
-
-  const unsigned int n_mpi_processes;
-  const unsigned int this_mpi_process;
-
-  ConditionalOStream pcout;
-
-  ParameterHandler &prm;
-
-  mutable TimerOutput computing_timer;
-
-  RandomField<dim, n> random_field;
-
   void make_grid();
   void setup_system();
-  void parse_parameters();
-
-struct AssemblyScratchData
-{
-  AssemblyScratchData(const FiniteElement<dim> &fe);
-  AssemblyScratchData(const AssemblyScratchData &scratch_data);
-
-  FEValues<dim> fe_values;
-
-  std::vector<Vector<double>> values_newton;
-  std::vector<Vector<double>> values_old;
-
-  std::vector<std::vector<Tensor<1,dim>>> gradients_newton;
-
-  std::vector<double> acegen_scratch;
-
-  // ===== deal.II (readable layer) =====
-  Vector<double> dPsiDu;
-
-  std::vector<Tensor<1,dim>> dPsidGradU;
-
-  FullMatrix<double> dPsiDu2;
-
-  std::vector<std::vector<Tensor<1,dim>>> dPsidUdGradU;
-
-  std::vector<std::vector<Tensor<2,dim>>> dPsidGradU2;
-};
-  
   void assemble_system();
-
   void solve();
   bool time_step_update();
   double determine_step_length() const;
   void output_results() const;
-  void generate_rhs();
-  double compute_residual();
   void make_timestep();
 
-  Triangulation<dim> triangulation;
-  const FESystem<dim>    fe;
-  DoFHandler<dim>    dof_handler;
+  // --- MPI Controls ---
+  MPI_Comm mpi_communicator;
+  const unsigned int n_mpi_processes;
+  const unsigned int this_mpi_process;
+  ConditionalOStream pcout;
 
+  ParameterHandler &prm;
+  mutable TimerOutput computing_timer;
+
+  // --- Physics & Random Field ---
+  RandomField<dim, n> random_field;
+
+  // --- Mesh & FE Data ---
+  Triangulation<dim> triangulation;
+  const FESystem<dim> fe;
+  DoFHandler<dim> dof_handler;
   AffineConstraints<double> constraints;
 
+  // --- PETSc Linear Algebra ---
+// --- PETSc Linear Algebra ---
   PETScWrappers::MPI::SparseMatrix system_matrix;
-
   IndexSet locally_owned_dofs;
   IndexSet locally_relevant_dofs;
 
-  PETScWrappers::MPI::Vector<double> oldsolution;
-  PETScWrappers::MPI::Vector<double> newton_iterate;
-  PETScWrappers::MPI::Vector<double> solution;
-  PETScWrappers::MPI::Vector<double> system_rhs;
+  // Non-ghosted vectors (for math, projections, and linear algebra)
+  PETScWrappers::MPI::Vector distributed_solution;
+  PETScWrappers::MPI::Vector distributed_old_solution;
+  PETScWrappers::MPI::Vector newton_iterate;
+  PETScWrappers::MPI::Vector system_rhs;
+
+  // Ghosted vectors (read-only for assembly evaluation and output)
+  PETScWrappers::MPI::Vector solution;
+  PETScWrappers::MPI::Vector oldsolution;
 
   const unsigned int n_q_points;
-  std::vector<std::vector<Tensor<1,n>>> rhs_values;
 
+  // --- Simulation Parameters ---
   unsigned int n_refinements;
   double left_lim;
   double right_lim;
@@ -160,7 +131,8 @@ struct AssemblyScratchData
   double max_multiplier;
   double min_multiplier;
   int optimal_it;
-  double dt_max; double dt_min;
+  double dt_max;
+  double dt_min;
   int newton_iteration;
   int solver_iteration;
 
@@ -168,4 +140,4 @@ struct AssemblyScratchData
   int max_linear_iteration;
 };
 
-#endif //DOUBLE_DITCH
+#endif // DOUBLE_DITCH
