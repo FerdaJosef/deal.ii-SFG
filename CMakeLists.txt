@@ -55,6 +55,12 @@ if(NOT ${deal.II_FOUND})
     )
 endif()
 
+if(DEAL_II_WITH_SUNDIALS)
+    message(STATUS "deal.II was compiled WITH SUNDIALS support.")
+else()
+    message(WARNING "deal.II was NOT compiled with SUNDIALS support!")
+endif()
+
 deal_ii_initialize_cached_variables()
 project(${TARGET})
 deal_ii_invoke_autopilot()

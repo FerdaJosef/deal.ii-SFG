@@ -80,7 +80,8 @@ void Step3<dim, n>::setup_system()
   pcout << "Number of degrees of freedom: " << dof_handler.n_dofs() << std::endl;
 
   constraints.clear();
-  constraints.reinit(locally_relevant_dofs);
+  // FIXED: Updated to use the non-deprecated two-argument reinit
+  constraints.reinit(locally_owned_dofs, locally_relevant_dofs);
 
   if constexpr (dim == 2)
   {
@@ -214,35 +215,6 @@ void Step3<dim, n>::assemble_system()
 }
 
 template <int dim, int n>
-double Step3<dim, n>::determine_step_length() const
-{
-  return 1.0;
-}
-
-template <int dim, int n>
-void Step3<dim, n>::solve()
-{
-  TimerOutput::Scope timing_section(computing_timer, "Solving linear system");
-
-  SolverControl solver_control(20000, linear_residual * system_rhs.l2_norm());
-  PETScWrappers::SolverGMRES solver(solver_control);
-
-  PETScWrappers::PreconditionBlockJacobi preconditioner;
-  preconditioner.initialize(system_matrix);
-
-  solver.solve(system_matrix, newton_iterate, system_rhs, preconditioner);
-
-  constraints.distribute(newton_iterate);
-
-  const double alpha = determine_step_length();
-  distributed_solution.add(alpha, newton_iterate);
-  solution = distributed_solution; // Syncs non-ghosted to ghosted vector
-
-  solver_iteration = solver_control.last_step();
-  pcout << solver_iteration << " iterations needed to obtain convergence." << std::endl;
-}
-
-template <int dim, int n>
 bool Step3<dim, n>::time_step_update()
 {
   if (newton_iteration == max_it)
@@ -263,7 +235,7 @@ bool Step3<dim, n>::time_step_update()
 
   if (solver_iteration > max_linear_iteration)
   {
-    pcout << "GMRES failed. Reducing time step." << std::endl;
+    pcout << "Linear solver failed. Reducing time step." << std::endl;
     distributed_solution = distributed_old_solution;
     solution = distributed_solution;
 
@@ -303,6 +275,16 @@ bool Step3<dim, n>::time_step_update()
 }
 
 template <int dim, int n>
+void Step3<dim, n>::sync_solution_and_assemble(const PETScWrappers::MPI::Vector &u)
+{
+  // u is KINSOL's (non-ghosted) evaluation point; push it into our
+  // distributed vector, then refresh the ghosted copy assemble_system() reads from.
+  distributed_solution = u;
+  solution = distributed_solution;
+  assemble_system();
+}
+
+template <int dim, int n>
 void Step3<dim, n>::make_timestep()
 {
   random_field.generate(triangulation.n_active_cells(), n_q_points, delta_t, 1e-6);
@@ -312,43 +294,91 @@ void Step3<dim, n>::make_timestep()
 
   pcout << "Time: " << time << std::endl;
 
-  // Preserve parallel ghost vector synchronization
   distributed_old_solution = distributed_solution;
   oldsolution = distributed_old_solution;
-  
+
   newton_iteration = 0;
 
-  // 1. Initial assembly to compute true starting residual
-  assemble_system();
-  double residual_norm = system_rhs.l2_norm();
+  SUNDIALS::KINSOL<PETScWrappers::MPI::Vector>::AdditionalData additional_data;
+  // 1. Relax tolerances to realistic values for 264k DOFs
+  additional_data.function_tolerance            = 1e-8; 
+  additional_data.step_tolerance                = 1e-8;
+  additional_data.maximum_non_linear_iterations = max_it;
+  
+  // 2. Disable line-search backtracking to prevent endless residual loops
+  additional_data.strategy = SUNDIALS::KINSOL<PETScWrappers::MPI::Vector>::AdditionalData::newton;
 
-  try 
+  SUNDIALS::KINSOL<PETScWrappers::MPI::Vector> nonlinear_solver(additional_data, mpi_communicator);
+
+  nonlinear_solver.reinit_vector = [&](PETScWrappers::MPI::Vector &v)
   {
-    // 2. Loop evaluates REAL residual before solving
-    while (residual_norm > 1e-10 && newton_iteration < max_it)
-    {
-      pcout << "Newton iter " << newton_iteration 
-            << " | Residual norm: " << residual_norm << std::endl;
+    v.reinit(locally_owned_dofs, mpi_communicator);
+  };
 
-      // Solve linear system K * delta_u = -R
-      solve();
-      newton_iteration++;
-
-      // Assemble system with updated solution to check new residual
-      assemble_system();
-      residual_norm = system_rhs.l2_norm();
+nonlinear_solver.residual =
+    [&](const PETScWrappers::MPI::Vector &u, PETScWrappers::MPI::Vector &F) -> int
+  {
+    sync_solution_and_assemble(u);
+    F = system_rhs;
+    F *= -1.0; 
+    ++newton_iteration;
+    
+    double res_norm = F.l2_norm();
+    pcout << "    Newton Iteration " << newton_iteration 
+          << " | Residual ||F||_2: " << res_norm << std::endl;
+          
+    if (std::isnan(res_norm)) {
+        pcout << "\n[!] NaN detected in Residual Assembly! The material model evaluated out-of-bounds." << std::endl;
     }
+          
+    return 0;
+  };
+
+  nonlinear_solver.solve_with_jacobian =
+    [&](const PETScWrappers::MPI::Vector &rhs, PETScWrappers::MPI::Vector &dst,
+        const double /*tolerance*/) -> int
+  {
+    SolverControl solver_control(max_linear_iteration, std::max(linear_residual * rhs.l2_norm(), 1e-10));
+
+    PETScWrappers::SparseDirectMUMPS direct_solver(solver_control);
+
+    pcout << "Frobenius: " << system_matrix.frobenius_norm() << std::endl;
+    pcout << "RHS norm: " << rhs.l2_norm() << std::endl;
+
+    direct_solver.solve(system_matrix, dst, rhs);
+    
+    constraints.distribute(dst);
+
+    double step_norm = dst.l2_norm();
+    pcout << "      -> Linear Solve step ||Delta u||_2: " << step_norm << std::endl;
+    
+    if (std::isnan(step_norm)) {
+        pcout << "\n[!] NaN detected in Linear Solve! The Jacobian matrix is likely singular." << std::endl;
+    }
+
+    solver_iteration = solver_control.last_step();
+    return 0;
+  };
+
+  nonlinear_solver.setup_jacobian =
+    [&](const PETScWrappers::MPI::Vector &u, const PETScWrappers::MPI::Vector & /*F*/) -> int
+  {
+    (void)u;
+    return 0;
+  };
+
+  try
+  {
+    nonlinear_solver.solve(distributed_solution);
+    solution = distributed_solution;
+    pcout << "  -> KINSOL converged successfully in " << newton_iteration << " iterations." << std::endl;
   }
   catch (const std::exception &e)
   {
-    pcout << "\n[!] Convergence failed gracefully: " << e.what() << std::endl;
+    pcout << "\n[!] KINSOL failed to converge: " << e.what() << std::endl;
     pcout << "[!] Redirecting to adaptive time-step reduction logic..." << std::endl;
-
-    // Force iteration count to max_it so time_step_update() reduces delta_t
     newton_iteration = max_it;
   }
-
-  pcout << "Final Residual norm: " << residual_norm << std::endl;
 }
 
 template <int dim, int n>

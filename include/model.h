@@ -59,8 +59,13 @@
 #include <deal.II/lac/petsc_sparse_matrix.h>
 #include <deal.II/lac/petsc_solver.h>
 #include <deal.II/lac/petsc_precondition.h>
+#include <deal.II/sundials/kinsol.h>
 
 // --- Adaptive Mesh Refinement
+#include <deal.II/numerics/error_estimator.h>
+#include <deal.II/grid/grid_refinement.h>
+#include <deal.II/distributed/solution_transfer.h>
+
 
 using namespace dealii;
 
@@ -75,11 +80,15 @@ private:
   void make_grid();
   void setup_system();
   void assemble_system();
-  void solve();
   bool time_step_update();
-  double determine_step_length() const;
   void output_results() const;
+  void refine_mesh(unsigned int n_min, unsigned int n_max);
+
+  void sync_solution_and_assemble(const PETScWrappers::MPI::Vector &u);
+
   void make_timestep();
+
+  bool kinsol_converged;
 
   // --- MPI Controls ---
   MPI_Comm mpi_communicator;
