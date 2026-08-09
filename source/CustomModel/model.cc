@@ -80,7 +80,8 @@ void Step3<dim, n>::setup_system()
   pcout << "Number of degrees of freedom: " << dof_handler.n_dofs() << std::endl;
 
   constraints.clear();
-  constraints.reinit(locally_relevant_dofs);
+  // FIXED: Updated to use the non-deprecated two-argument reinit
+  constraints.reinit(locally_owned_dofs, locally_relevant_dofs);
 
   if constexpr (dim == 2)
   {
@@ -234,7 +235,7 @@ bool Step3<dim, n>::time_step_update()
 
   if (solver_iteration > max_linear_iteration)
   {
-    pcout << "GMRES failed. Reducing time step." << std::endl;
+    pcout << "Linear solver failed. Reducing time step." << std::endl;
     distributed_solution = distributed_old_solution;
     solution = distributed_solution;
 
@@ -296,13 +297,16 @@ void Step3<dim, n>::make_timestep()
   distributed_old_solution = distributed_solution;
   oldsolution = distributed_old_solution;
 
-  newton_iteration = 0; // now used as a residual-evaluation counter, see note below
+  newton_iteration = 0;
 
   SUNDIALS::KINSOL<PETScWrappers::MPI::Vector>::AdditionalData additional_data;
-  additional_data.function_tolerance      = 1e-11;   // matches your tightened absolute tol
-  additional_data.step_tolerance           = 1e-11;
+  // 1. Relax tolerances to realistic values for 264k DOFs
+  additional_data.function_tolerance            = 1e-8; 
+  additional_data.step_tolerance                = 1e-8;
   additional_data.maximum_non_linear_iterations = max_it;
-  additional_data.strategy = SUNDIALS::KINSOL<PETScWrappers::MPI::Vector>::AdditionalData::linesearch;
+  
+  // 2. Disable line-search backtracking to prevent endless residual loops
+  additional_data.strategy = SUNDIALS::KINSOL<PETScWrappers::MPI::Vector>::AdditionalData::newton;
 
   SUNDIALS::KINSOL<PETScWrappers::MPI::Vector> nonlinear_solver(additional_data, mpi_communicator);
 
@@ -311,42 +315,61 @@ void Step3<dim, n>::make_timestep()
     v.reinit(locally_owned_dofs, mpi_communicator);
   };
 
-  nonlinear_solver.residual =
+nonlinear_solver.residual =
     [&](const PETScWrappers::MPI::Vector &u, PETScWrappers::MPI::Vector &F) -> int
   {
     sync_solution_and_assemble(u);
-    // assemble_system() fills system_rhs = -R  (matches your existing K*du=-R convention)
     F = system_rhs;
-    F *= -1.0; // F(u) = R(u)
-    ++newton_iteration; // proxy for iteration count -- see note in chat
-    return 0;
-  };
-
-  nonlinear_solver.setup_jacobian =
-    [&](const PETScWrappers::MPI::Vector &u, const PETScWrappers::MPI::Vector & /*F*/) -> int
-  {
-    // system_matrix was already assembled by the residual() call at this same u
-    // (KINSOL calls residual immediately before setup_jacobian at the same point).
-    (void)u;
+    F *= -1.0; 
+    ++newton_iteration;
+    
+    double res_norm = F.l2_norm();
+    pcout << "    Newton Iteration " << newton_iteration 
+          << " | Residual ||F||_2: " << res_norm << std::endl;
+          
+    if (std::isnan(res_norm)) {
+        pcout << "\n[!] NaN detected in Residual Assembly! The material model evaluated out-of-bounds." << std::endl;
+    }
+          
     return 0;
   };
 
   nonlinear_solver.solve_with_jacobian =
-    [&](const PETScWrappers::MPI::Vector &rhs, PETScWrappers::MPI::Vector &dst,
-        const double /*tolerance*/) -> int
+      [&](const PETScWrappers::MPI::Vector &rhs, PETScWrappers::MPI::Vector &dst,
+          const double /*tolerance*/) -> int
+    {
+      SolverControl solver_control(max_linear_iteration, std::max(linear_residual * rhs.l2_norm(), 1e-10));
+
+      // Reverting to GMRES
+      PETScWrappers::SolverGMRES solver(solver_control);
+
+      // Setup BoomerAMG preconditioner
+      PETScWrappers::PreconditionBoomerAMG preconditioner;
+      PETScWrappers::PreconditionBoomerAMG::AdditionalData pc_data;
+      pc_data.symmetric_operator = false; // Set to true ONLY if your system matrix is perfectly symmetric
+      preconditioner.initialize(system_matrix, pc_data);
+
+      try {
+          solver.solve(system_matrix, dst, rhs, preconditioner);
+      } catch (const std::exception &e) {
+          pcout << "\n[!] GMRES failed: " << e.what() << std::endl;
+          return 1; // Tells KINSOL the linear solve failed
+      }
+      
+      constraints.distribute(dst);
+
+      double step_norm = dst.l2_norm();
+      pcout << "      -> GMRES solved in " << solver_control.last_step() 
+            << " steps | ||Delta u||_2: " << step_norm << std::endl;
+
+      solver_iteration = solver_control.last_step();
+      return 0;
+    };
+
+  nonlinear_solver.setup_jacobian =
+    [&](const PETScWrappers::MPI::Vector &u, const PETScWrappers::MPI::Vector & /*F*/) -> int
   {
-    SolverControl solver_control(max_linear_iteration, linear_residual * rhs.l2_norm());
-
-    PETScWrappers::SolverGMRES::AdditionalData gmres_data(100); // restart = 100
-    PETScWrappers::SolverGMRES solver(solver_control, gmres_data);
-
-    PETScWrappers::PreconditionBoomerAMG preconditioner;
-    preconditioner.initialize(system_matrix);
-
-    solver.solve(system_matrix, dst, rhs, preconditioner);
-    constraints.distribute(dst);
-
-    solver_iteration = solver_control.last_step();
+    (void)u;
     return 0;
   };
 
@@ -354,15 +377,23 @@ void Step3<dim, n>::make_timestep()
   {
     nonlinear_solver.solve(distributed_solution);
     solution = distributed_solution;
+
+    // Explicitly verify convergence -- KINSOL/deal.II wrapper may not throw
+    // even when the linear solver reported failure via return code 1.
+    assemble_system();
+    double final_residual = system_rhs.l2_norm();
+    if (!std::isfinite(final_residual) || final_residual > 1.0 /* sane threshold */)
+    {
+      throw std::runtime_error("KINSOL returned without exception but residual is not converged: "
+                                + std::to_string(final_residual));
+    }
+    pcout << "  -> KINSOL converged successfully, residual = " << final_residual << std::endl;
   }
   catch (const std::exception &e)
   {
-    pcout << "\n[!] KINSOL failed to converge: " << e.what() << std::endl;
-    pcout << "[!] Redirecting to adaptive time-step reduction logic..." << std::endl;
+    pcout << "\n[!] Step rejected: " << e.what() << std::endl;
     newton_iteration = max_it;
   }
-
-  pcout << "Residual evaluations this step: " << newton_iteration << std::endl;
 }
 
 template <int dim, int n>

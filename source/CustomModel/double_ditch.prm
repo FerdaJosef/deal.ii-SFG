@@ -31,7 +31,7 @@ subsection Temporal parameters
   set Time step number        = 0
 
   # The hard ceiling for the time step size
-  set Max time step       = 0.1
+  set Max time step       = 0.25
 
   # The hard floor for the time step size
   set Min time step       = 1e-8

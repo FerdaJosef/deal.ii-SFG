@@ -16,29 +16,26 @@ double InitialValues<dim, n>::value(const Point<dim> &p,
   const double r = p.norm();
   const double theta = std::atan2(p[1], p[0]);
 
-  if (r < 7.5)
+  if (r < 15.0)
   {
       if (component == 0)
       {
-        return 0.99 + noise;
+          if (theta >= -75*M_PI/180 && theta < 70*M_PI/180)
+              return 0.99 + noise;
+          else
+              return 0.0;
       }
 
       else if (component == 1)
       {
-        return 0.0;
-      }
-
-      if (component == 2)
-      {
-        return 0.0;
-      }
-
-      else if (component == 3)
-      {
-        return 0.0;
+          if (theta >= 80*M_PI/180 && theta < M_PI)
+              return 0.99 + noise;
+          else
+              return 0.0;
       }
   }
-    return 0.0;
+
+return noise;
 }
 
 // !!! DŮLEŽITÉ: Explicitní instanciace !!!

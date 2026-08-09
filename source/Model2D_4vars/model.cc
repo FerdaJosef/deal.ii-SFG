@@ -301,8 +301,8 @@ void Step3<dim, n>::make_timestep()
 
   SUNDIALS::KINSOL<PETScWrappers::MPI::Vector>::AdditionalData additional_data;
   // 1. Relax tolerances to realistic values for 264k DOFs
-  additional_data.function_tolerance            = 1e-8; 
-  additional_data.step_tolerance                = 1e-8;
+  additional_data.function_tolerance            = 1e-10; 
+  additional_data.step_tolerance                = 1e-10;
   additional_data.maximum_non_linear_iterations = max_it;
   
   // 2. Disable line-search backtracking to prevent endless residual loops
@@ -335,30 +335,36 @@ nonlinear_solver.residual =
   };
 
   nonlinear_solver.solve_with_jacobian =
-    [&](const PETScWrappers::MPI::Vector &rhs, PETScWrappers::MPI::Vector &dst,
-        const double /*tolerance*/) -> int
-  {
-    SolverControl solver_control(max_linear_iteration, std::max(linear_residual * rhs.l2_norm(), 1e-10));
+      [&](const PETScWrappers::MPI::Vector &rhs, PETScWrappers::MPI::Vector &dst,
+          const double /*tolerance*/) -> int
+    {
+      SolverControl solver_control(max_linear_iteration, std::max(linear_residual * rhs.l2_norm(), 1e-10));
 
-    PETScWrappers::SparseDirectMUMPS direct_solver(solver_control);
+      // Reverting to GMRES
+      PETScWrappers::SolverGMRES solver(solver_control);
 
-    pcout << "Frobenius: " << system_matrix.frobenius_norm() << std::endl;
-    pcout << "RHS norm: " << rhs.l2_norm() << std::endl;
+      // Setup BoomerAMG preconditioner
+      PETScWrappers::PreconditionBoomerAMG preconditioner;
+      PETScWrappers::PreconditionBoomerAMG::AdditionalData pc_data;
+      pc_data.symmetric_operator = false; // Set to true ONLY if your system matrix is perfectly symmetric
+      preconditioner.initialize(system_matrix, pc_data);
 
-    direct_solver.solve(system_matrix, dst, rhs);
-    
-    constraints.distribute(dst);
+      try {
+          solver.solve(system_matrix, dst, rhs, preconditioner);
+      } catch (const std::exception &e) {
+          pcout << "\n[!] GMRES failed: " << e.what() << std::endl;
+          return 1; // Tells KINSOL the linear solve failed
+      }
+      
+      constraints.distribute(dst);
 
-    double step_norm = dst.l2_norm();
-    pcout << "      -> Linear Solve step ||Delta u||_2: " << step_norm << std::endl;
-    
-    if (std::isnan(step_norm)) {
-        pcout << "\n[!] NaN detected in Linear Solve! The Jacobian matrix is likely singular." << std::endl;
-    }
+      double step_norm = dst.l2_norm();
+      pcout << "      -> GMRES solved in " << solver_control.last_step() 
+            << " steps | ||Delta u||_2: " << step_norm << std::endl;
 
-    solver_iteration = solver_control.last_step();
-    return 0;
-  };
+      solver_iteration = solver_control.last_step();
+      return 0;
+    };
 
   nonlinear_solver.setup_jacobian =
     [&](const PETScWrappers::MPI::Vector &u, const PETScWrappers::MPI::Vector & /*F*/) -> int
@@ -371,12 +377,21 @@ nonlinear_solver.residual =
   {
     nonlinear_solver.solve(distributed_solution);
     solution = distributed_solution;
-    pcout << "  -> KINSOL converged successfully in " << newton_iteration << " iterations." << std::endl;
+
+    // Explicitly verify convergence -- KINSOL/deal.II wrapper may not throw
+    // even when the linear solver reported failure via return code 1.
+    assemble_system();
+    double final_residual = system_rhs.l2_norm();
+    if (!std::isfinite(final_residual) || final_residual > 1.0 /* sane threshold */)
+    {
+      throw std::runtime_error("KINSOL returned without exception but residual is not converged: "
+                                + std::to_string(final_residual));
+    }
+    pcout << "  -> KINSOL converged successfully, residual = " << final_residual << std::endl;
   }
   catch (const std::exception &e)
   {
-    pcout << "\n[!] KINSOL failed to converge: " << e.what() << std::endl;
-    pcout << "[!] Redirecting to adaptive time-step reduction logic..." << std::endl;
+    pcout << "\n[!] Step rejected: " << e.what() << std::endl;
     newton_iteration = max_it;
   }
 }
