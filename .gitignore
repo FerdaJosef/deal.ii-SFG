@@ -1,0 +1,15 @@
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+*.cmake
+*.o
+*.d
+*.bin
+*.out
+main
+step-3
+*.vtu
+*.pvd
