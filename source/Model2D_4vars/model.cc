@@ -123,8 +123,6 @@ void Step3<dim, n>::setup_system()
 
   mg_constrained_dofs.clear();
   mg_constrained_dofs.initialize(dof_handler);
-  mg_constrained_dofs.make_zero_boundary_constraints(dof_handler,
-                                                        dirichlet_boundary_ids);
 
   const unsigned int n_levels = triangulation.n_levels();
 

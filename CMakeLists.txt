@@ -4,12 +4,9 @@
 
 set(MODEL_DIR "${CMAKE_SOURCE_DIR}/source/Model2D_4vars")
 
-file(REMOVE "${CMAKE_CURRENT_BINARY_DIR}/double_ditch.prm")
-configure_file(
-    "${MODEL_DIR}/double_ditch.prm"
-    "${CMAKE_CURRENT_BINARY_DIR}/double_ditch.prm"
-    COPYONLY
-)
+execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink 
+                ${MODEL_DIR}/double_ditch.prm 
+                ${CMAKE_CURRENT_BINARY_DIR}/double_ditch.prm)
 
 include_directories(
     ${CMAKE_SOURCE_DIR}

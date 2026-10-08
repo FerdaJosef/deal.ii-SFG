@@ -56,6 +56,6 @@ subsection Solver
 end
 
 subsection Output parameters
-  set Output filename = output/pepe
+  set Output filename = output/solution
 
 end
