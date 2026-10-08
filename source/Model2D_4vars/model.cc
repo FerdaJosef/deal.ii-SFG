@@ -70,6 +70,9 @@ void Step3<dim, n>::setup_system()
 #endif
 
   dof_handler.distribute_dofs(fe);
+
+  dof_handler.distribute_mg_dofs();
+
   DoFRenumbering::subdomain_wise(dof_handler);
 
   const std::vector<IndexSet> locally_owned_dofs_per_proc =
@@ -77,7 +80,12 @@ void Step3<dim, n>::setup_system()
   locally_owned_dofs = locally_owned_dofs_per_proc[this_mpi_process];
   locally_relevant_dofs = DoFTools::extract_locally_relevant_dofs(dof_handler);
 
-  pcout << "Number of degrees of freedom: " << dof_handler.n_dofs() << std::endl;
+  pcout << "   Number of degrees of freedom: " << dof_handler.n_dofs()
+            << " (by level: ";
+  for (unsigned int level = 0; level < triangulation.n_levels(); ++level)
+    pcout << dof_handler.n_dofs(level)
+              << (level == triangulation.n_levels() - 1 ? ")" : ", ");
+  pcout << std::endl;
 
   constraints.clear();
   constraints.reinit(locally_relevant_dofs);
@@ -112,6 +120,41 @@ void Step3<dim, n>::setup_system()
   oldsolution.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
 
   random_field.reinit(triangulation.n_active_cells(), n_q_points);
+
+  mg_constrained_dofs.clear();
+  mg_constrained_dofs.initialize(dof_handler);
+  mg_constrained_dofs.make_zero_boundary_constraints(dof_handler,
+                                                        dirichlet_boundary_ids);
+
+  const unsigned int n_levels = triangulation.n_levels();
+
+  mg_interface_matrices.resize(0, n_levels - 1);
+  mg_matrices.resize(0, n_levels - 1);
+  mg_sparsity_patterns.resize(0, n_levels - 1);
+  mg_interface_sparsity_patterns.resize(0, n_levels - 1);
+
+  for (unsigned int level = 0; level < n_levels; ++level)
+  {
+    {
+      DynamicSparsityPattern dsp(dof_handler.n_dofs(level),
+                                  dof_handler.n_dofs(level));
+      MGTools::make_sparsity_pattern(dof_handler, dsp, level);
+
+      mg_sparsity_patterns[level].copy_from(dsp);
+      mg_matrices[level].reinit(mg_sparsity_patterns[level]);
+    }
+    {
+      DynamicSparsityPattern dsp(dof_handler.n_dofs(level),
+                                  dof_handler.n_dofs(level));
+      MGTools::make_interface_sparsity_pattern(dof_handler,
+                                                mg_constrained_dofs,
+                                                dsp,
+                                                level);
+      mg_interface_sparsity_patterns[level].copy_from(dsp);
+      mg_interface_matrices[level].reinit(
+        mg_interface_sparsity_patterns[level]);
+    }
+  }
 }
 
 template <int dim, int n>

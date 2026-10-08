@@ -60,7 +60,16 @@
 #include <deal.II/lac/petsc_solver.h>
 #include <deal.II/lac/petsc_precondition.h>
 
-// --- Adaptive Mesh Refinement
+// --- Geometric Multigrid ---
+  #include <deal.II/multigrid/mg_constrained_dofs.h>
+  #include <deal.II/multigrid/multigrid.h>
+  #include <deal.II/multigrid/mg_transfer.h>
+  #include <deal.II/multigrid/mg_tools.h>
+  #include <deal.II/multigrid/mg_coarse.h>
+  #include <deal.II/multigrid/mg_smoother.h>
+  #include <deal.II/multigrid/mg_matrix.h>
+
+  #include <deal.II/meshworker/mesh_loop.h>
 
 using namespace dealii;
 
@@ -138,6 +147,14 @@ private:
 
   double linear_residual;
   int max_linear_iteration;
+
+  // Geometric multigrid
+    MGLevelObject<SparsityPattern> mg_sparsity_patterns;
+    MGLevelObject<SparsityPattern> mg_interface_sparsity_patterns;
+
+    MGLevelObject<SparseMatrix<double>> mg_matrices;
+    MGLevelObject<SparseMatrix<double>> mg_interface_matrices;
+    MGConstrainedDoFs                   mg_constrained_dofs;
 };
 
 #endif // DOUBLE_DITCH

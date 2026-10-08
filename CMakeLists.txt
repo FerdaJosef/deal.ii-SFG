@@ -4,9 +4,12 @@
 
 set(MODEL_DIR "${CMAKE_SOURCE_DIR}/source/Model2D_4vars")
 
-execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink 
-                ${MODEL_DIR}/double_ditch.prm 
-                ${CMAKE_CURRENT_BINARY_DIR}/double_ditch.prm)
+file(REMOVE "${CMAKE_CURRENT_BINARY_DIR}/double_ditch.prm")
+configure_file(
+    "${MODEL_DIR}/double_ditch.prm"
+    "${CMAKE_CURRENT_BINARY_DIR}/double_ditch.prm"
+    COPYONLY
+)
 
 include_directories(
     ${CMAKE_SOURCE_DIR}
@@ -58,4 +61,3 @@ endif()
 deal_ii_initialize_cached_variables()
 project(${TARGET})
 deal_ii_invoke_autopilot()
-

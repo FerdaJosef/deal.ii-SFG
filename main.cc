@@ -21,7 +21,11 @@ int main(int argc, char *argv[])
       ParameterHandler prm;
       ParameterReader  param(prm);
 
-      param.read_parameters("double_ditch.prm");
+      const std::filesystem::path executable_path =
+        std::filesystem::absolute(argv[0]);
+      const std::filesystem::path parameter_file =
+        executable_path.parent_path() / "double_ditch.prm";
+      param.read_parameters(parameter_file.string());
 
       prm.enter_subsection("Output parameters");
       std::string out_file = prm.get("Output filename"); 
